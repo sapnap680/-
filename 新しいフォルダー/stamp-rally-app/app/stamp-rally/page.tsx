@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import Script from "next/script";
 import { db } from "@/src/lib/firebase";
@@ -96,10 +96,8 @@ export default function StampRallyPage() {
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
 
-	// 景品確認用／スワイプで閉じる
+	// 景品確認用
 	const [currentPrizeNumber, setCurrentPrizeNumber] = useState<number | null>(null);
-	const touchStartXRef = useRef<number | null>(null);
-	const hasSwipedRef = useRef(false);
 
 	// 履歴の折りたたみ
 	const [historyOpen, setHistoryOpen] = useState(false);
@@ -118,6 +116,9 @@ export default function StampRallyPage() {
 	useEffect(() => {
 		localStorage.setItem("claimed_prizes_v1", JSON.stringify(claimedPrizeNumbers));
 	}, [claimedPrizeNumbers]);
+
+	// 特別スタンプの判定を最適化
+	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
 	useEffect(() => {
 		if (!liffReady) return;
@@ -278,19 +279,19 @@ export default function StampRallyPage() {
 	}, [profile]);
 
 	async function handleQRCode(qrValue: string, prof: any) {
-		const stampNumber = stampQRCodes[qrValue];
-		if (!stampNumber || stampNumber < 1 || stampNumber > totalStamps) {
+		const qrStampNumber = stampQRCodes[qrValue];
+		if (!qrStampNumber || qrStampNumber < 1 || qrStampNumber > totalStamps) {
 			setOutputMessage("無効なQRコードです");
 			return;
 		}
 		
-		// 重複チェック
-		if (stampedNumbers.includes(stampNumber)) {
-			setOutputMessage(`スタンプ${stampNumber}は既に獲得済みです`);
+		// 重複チェック（QRコードの番号ではなく、獲得済みかどうか）
+		if (stampedNumbers.includes(qrStampNumber)) {
+			setOutputMessage(`このQRコードは既に読み込まれています`);
 			return;
 		}
 		
-		const restriction = stampDateRestrictions[stampNumber];
+		const restriction = stampDateRestrictions[qrStampNumber];
 		if (restriction) {
 			const now = new Date();
 			const todayStr = now.toISOString().slice(0, 10);
@@ -317,7 +318,7 @@ export default function StampRallyPage() {
 				return;
 			}
 			
-			if (stampNumber > totalStamps) {
+			if (stampedNumbers.length >= totalStamps) {
 				setOutputMessage("全て獲得済みです！");
 				return;
 			}
@@ -341,10 +342,7 @@ export default function StampRallyPage() {
 				console.error("Failed to sync Firestore", err);
 			}
 			setOutputMessage(`スタンプ${nextStampNumber}を獲得！（会場: ${closestVenue.name}）`);
-			if (specialStampNumbers.includes(nextStampNumber)) {
-				setStaffPrize(`${nextStampNumber === 22 ? "❓" : "🎁"} ギフト（${nextStampNumber}個目）`);
-				setShowStaffConfirm(true);
-			}
+
 		} catch (e: any) {
 			setOutputMessage(e.message || "位置情報取得エラー");
 		}
@@ -607,29 +605,26 @@ export default function StampRallyPage() {
 			</div>
 			{/* ここからスタンプグリッド */}
 			<div className="stamp-container"> 
-				{Array.from({ length: totalStamps }, (_, i) => i + 1).map(num => (
-					<div key={num} className={`stamp ${stampedNumbers.includes(num) ? "stamped" : ""} ${specialStampNumbers.includes(num) ? "special-stamp" : ""}`}>
-						{num === 3 || num === 7 || num === 12 ? (
-							<>
-								{num}
-								<span className="special-label">🎁
-									<br />
-									ギフト
-								</span>
-							</>
-						) : num === 22 ? (
-							<>
-								{num}
-								<span className="special-label">❓
-									<br />
-									ギフト
-								</span>
-							</>
-						) : (
-							num
-						)}
-					</div>
-				))}
+				{Array.from({ length: totalStamps }, (_, i) => i + 1).map(num => {
+					const isStamped = stampedNumbers.includes(num);
+					const isSpecial = specialStampSet.has(num);
+					return (
+						<div key={num} className={`stamp ${isStamped ? "stamped" : ""} ${isSpecial ? "special-stamp" : ""}`}>
+							{isSpecial ? (
+								<>
+									{num}
+									<span className="special-label">
+										{num === 22 ? "❓" : "🎁"}
+										<br />
+										ギフト
+									</span>
+								</>
+							) : (
+								num
+							)}
+						</div>
+					);
+				})}
 				{/* 日程表ボタン - スタンプ22の右側 */}
 				<button 
 					className="schedule-btn-in-grid" 
@@ -659,13 +654,20 @@ export default function StampRallyPage() {
 				</div>
 			)}
 			{showStaffConfirm && (
-				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)} onTouchStart={(e)=>{touchStartXRef.current=e.touches[0].clientX;hasSwipedRef.current=false;}} onTouchMove={(e)=>{if(touchStartXRef.current==null)return;const dx=e.touches[0].clientX-touchStartXRef.current;if(Math.abs(dx)>80){hasSwipedRef.current=true;}}} onTouchEnd={()=>{if(hasSwipedRef.current){setShowStaffConfirm(false);if(currentPrizeNumber!=null){setClaimedPrizeNumbers(prev=> prev.includes(currentPrizeNumber!)?prev:[...prev,currentPrizeNumber!]);}setOutputMessage("スタッフ確認済みにしました");}touchStartXRef.current=null;hasSwipedRef.current=false;}}>
+				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)}>
 					<div className="confirm-label">
 						<span>🎉 おめでとうございます！</span>
 						<br />
-						<span>{staffPrize} を獲得しました。会場スタッフにこの画面をお見せください。</span>
+						<span>{staffPrize} を獲得しました。</span>
+						<br />
+						<span>会場スタッフにこの画面をお見せください。</span>
 					</div>
-					<button onClick={() => setShowStaffConfirm(false)} style={{ background: "#6c757d", color: "#fff" }}>タップで閉じる</button>
+					<button onClick={() => {
+						setShowStaffConfirm(false);
+						if(currentPrizeNumber!=null){
+							setClaimedPrizeNumbers(prev=> prev.includes(currentPrizeNumber!)?prev:[...prev,currentPrizeNumber!]);
+						}
+					}} style={{ background: "#6c757d", color: "#fff" }}>タップで閉じる</button>
 				</div>
 			)}
 			<div className="history-list">
@@ -720,7 +722,7 @@ export default function StampRallyPage() {
 				.prize-progress { flex: 1; background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 9px; padding: 8px 10px; color: #adb5bd; font-weight: bold; font-size: 1em; text-align: center; box-shadow: 0 1px 4px #0001; transition: all 0.3s ease; }
 				.prize-done { background: #fffbe7; border-color: #ffd700; color: #b88c00; transform: scale(1.05); box-shadow: 0 2px 10px #ffd70044; }
 				.prize-num { font-size: 1.2em; font-weight: bold; display: block; }
-				.prize-label { font-size: 0.7em; display: block; margin-top: 2px; line-height: 1.1; }
+				.prize-label { font-size: 0.65em; display: block; margin-top: 2px; line-height: 1.0; }
 				/* デフォルトは 6 列、スマホでは 5-5-5-2 に見える幅へ */
 				.stamp-container { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; max-width: 380px; margin: 0 auto 30px; padding: 0 10px; }
 				@media (max-width: 420px) {
