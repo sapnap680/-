@@ -322,8 +322,9 @@ export default function StampRallyPage() {
 				return;
 			}
 			const nowStr = new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
-			const newEntry: StampHistory = { stampNumber: stampNumber, venueName: closestVenue.name, date: nowStr, source: `QR / ${prof.displayName || "ゲスト"}` };
-			setStampedNumbers([...stampedNumbers, stampNumber]);
+			const nextStampNumber = stampedNumbers.length + 1;
+			const newEntry: StampHistory = { stampNumber: nextStampNumber, venueName: closestVenue.name, date: nowStr, source: `QR / ${prof.displayName || "ゲスト"}` };
+			setStampedNumbers([...stampedNumbers, nextStampNumber]);
 			setHistory([...history, newEntry]);
 			// Firestoreへ追記
 			try {
@@ -339,9 +340,9 @@ export default function StampRallyPage() {
 			} catch (err) {
 				console.error("Failed to sync Firestore", err);
 			}
-			setOutputMessage(`スタンプ${stampNumber}を獲得！（会場: ${closestVenue.name}）`);
-			if (specialStampNumbers.includes(stampNumber)) {
-				setStaffPrize(`${stampNumber === 22 ? "❓" : "🎁"} ギフト（${stampNumber}個目）`);
+			setOutputMessage(`スタンプ${nextStampNumber}を獲得！（会場: ${closestVenue.name}）`);
+			if (specialStampNumbers.includes(nextStampNumber)) {
+				setStaffPrize(`${nextStampNumber === 22 ? "❓" : "🎁"} ギフト（${nextStampNumber}個目）`);
 				setShowStaffConfirm(true);
 			}
 		} catch (e: any) {
@@ -719,7 +720,7 @@ export default function StampRallyPage() {
 				.prize-progress { flex: 1; background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 9px; padding: 8px 10px; color: #adb5bd; font-weight: bold; font-size: 1em; text-align: center; box-shadow: 0 1px 4px #0001; transition: all 0.3s ease; }
 				.prize-done { background: #fffbe7; border-color: #ffd700; color: #b88c00; transform: scale(1.05); box-shadow: 0 2px 10px #ffd70044; }
 				.prize-num { font-size: 1.2em; font-weight: bold; display: block; }
-				.prize-label { font-size: 0.8em; display: block; margin-top: 2px; }
+				.prize-label { font-size: 0.7em; display: block; margin-top: 2px; line-height: 1.1; }
 				/* デフォルトは 6 列、スマホでは 5-5-5-2 に見える幅へ */
 				.stamp-container { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; max-width: 380px; margin: 0 auto 30px; padding: 0 10px; }
 				@media (max-width: 420px) {
