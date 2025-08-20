@@ -68,6 +68,7 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 declare global {
 	interface Window {
 		liff: any;
+		disableDuplicateCheck?: boolean;
 	}
 }
 const liffId = "2007663892-mQOQRy2z";
@@ -286,7 +287,8 @@ export default function StampRallyPage() {
 		}
 		
 		// 重複チェック（QRコードの番号ではなく、獲得済みかどうか）
-		if (stampedNumbers.includes(qrStampNumber)) {
+		// 一時的に無効化: window.disableDuplicateCheck = true でコンソールから制御可能
+		if (!window.disableDuplicateCheck && stampedNumbers.includes(qrStampNumber)) {
 			setOutputMessage(`このQRコードは既に読み込まれています`);
 			return;
 		}
@@ -458,6 +460,47 @@ export default function StampRallyPage() {
 		}
 		
 		setOutputMessage(`スタンプ${last}を削除しました`);
+	}
+
+	async function handleAdminReset() {
+		const pw = prompt("パスワードを入力");
+		if (pw !== adminPassword) {
+			alert("パスワードが違います");
+			return;
+		}
+		if (!confirm("本当に全てのスタンプをリセットしますか？")) {
+			return;
+		}
+		setStampedNumbers([]);
+		setHistory([]);
+		setClaimedPrizeNumbers([]);
+		localStorage.removeItem("stamps_v1");
+		localStorage.removeItem("stamp_history_v1");
+		localStorage.removeItem("claimed_prizes_v1");
+		// Firestoreからも削除
+		try {
+			if (profile?.userId) {
+				const ref = doc(db, "stamp_rallies", profile.userId);
+				await updateDoc(ref, { history: [] });
+			}
+		} catch (err) {
+			console.error("Failed to reset Firestore", err);
+		}
+		
+		setOutputMessage("全てのスタンプをリセットしました");
+	}
+
+	async function handleAdminResetDuplicateCheck() {
+		const pw = prompt("パスワードを入力");
+		if (pw !== adminPassword) {
+			alert("パスワードが違います");
+			return;
+		}
+		// 重複チェック用のフラグをリセット
+		if (typeof window !== 'undefined') {
+			(window as any).duplicateCheckReset = Date.now();
+		}
+		setOutputMessage("重複チェックをリセットしました。同じQRコードを再度読み取れます。");
 	}
 
 	const nextPrizeNumber = specialStampNumbers.find(num => stampedNumbers.length < num);
@@ -704,6 +747,12 @@ export default function StampRallyPage() {
 						<button className="button admin-btn" onClick={handleAdminDelete}>
 							スタンプ削除
 						</button>
+						<button className="button admin-btn" onClick={handleAdminReset} style={{ background: "#dc3545" }}>
+							全リセット
+						</button>
+						<button className="button admin-btn" onClick={handleAdminResetDuplicateCheck} style={{ background: "#fd7e14" }}>
+							重複チェックリセット
+						</button>
 					</div>
 				)}
 			</div>
@@ -719,10 +768,10 @@ export default function StampRallyPage() {
 				.stamp-count, .next-prize-info { margin: 4px 0; }
 				.count-large { font-size: 1.4em; font-weight: bold; color: #a97b2c; }
 				.prize-progress-bar { display: flex; justify-content: center; gap: 12px; margin: 16px 0; padding: 0 10px; max-width: 400px; margin-left: auto; margin-right: auto; }
-				.prize-progress { flex: 1; background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 9px; padding: 8px 10px; color: #adb5bd; font-weight: bold; font-size: 1em; text-align: center; box-shadow: 0 1px 4px #0001; transition: all 0.3s ease; }
+				.prize-progress { flex: 1; background: #f8f9fa; border: 2px solid #e9ecef; border-radius: 9px; padding: 8px 6px; color: #adb5bd; font-weight: bold; font-size: 1em; text-align: center; box-shadow: 0 1px 4px #0001; transition: all 0.3s ease; min-height: 60px; }
 				.prize-done { background: #fffbe7; border-color: #ffd700; color: #b88c00; transform: scale(1.05); box-shadow: 0 2px 10px #ffd70044; }
 				.prize-num { font-size: 1.2em; font-weight: bold; display: block; }
-				.prize-label { font-size: 0.6em; display: block; margin-top: 2px; line-height: 0.9; }
+				.prize-label { font-size: 0.55em; display: block; margin-top: 2px; line-height: 0.85; }
 				/* デフォルトは 6 列、スマホでは 5-5-5-2 に見える幅へ */
 				.stamp-container { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; max-width: 380px; margin: 0 auto 30px; padding: 0 10px; }
 				@media (max-width: 420px) {
@@ -746,8 +795,8 @@ export default function StampRallyPage() {
 				.admin-toggle-btn { background-color: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6; padding: 8px 16px; font-size: 14px; }
 				.admin-controls { margin: 0 auto; padding: 15px; background: #f1f3f5; border-radius: 8px; border: 1px solid #dee2e6; max-width: 300px; text-align: center; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 				.admin-btn { background-color: #6c757d; color: white; padding: 8px 16px; font-size: 14px; border-radius: 5px; }
-				.staff-confirm-container { margin: 24px auto 0 auto; max-width: 420px; background: #fffbe7; border: 2px solid #ffd700cc; border-radius: 12px; box-shadow: 0 4px 16px #ffd70022; padding: 28px 20px 22px 20px; color: #a97c2c; font-size: 1.22em; font-weight: bold; text-align: center; z-index: 12; }
-				.staff-confirm-container .confirm-label { margin-bottom: 14px; font-size: 1.1em; font-weight: bold; color: #b88c00; letter-spacing: 1px; text-shadow: 0 2px 12px #fffbe7; line-height: 1.6; }
+				.staff-confirm-container { margin: 24px auto 0 auto; max-width: 480px; background: #fffbe7; border: 2px solid #ffd700cc; border-radius: 12px; box-shadow: 0 4px 16px #ffd70022; padding: 28px 20px 22px 20px; color: #a97c2c; font-size: 1.22em; font-weight: bold; text-align: center; z-index: 12; }
+				.staff-confirm-container .confirm-label { margin-bottom: 14px; font-size: 0.85em; font-weight: bold; color: #b88c00; letter-spacing: 1px; text-shadow: 0 2px 12px #fffbe7; line-height: 1.6; }
 				.staff-confirm-container .confirm-label span { white-space: nowrap; }
 				.staff-confirm-container button { margin-top: 10px; background: #00c300; color: #fff; font-size: 1.1em; border-radius: 8px; border: none; padding: 10px 28px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 12px #c3e6cb88; }
 				/* 日程表 */
