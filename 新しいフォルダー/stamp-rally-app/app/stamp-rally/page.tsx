@@ -95,6 +95,7 @@ export default function StampRallyPage() {
 	const [liffError, setLiffError] = useState("");
 	const [profile, setProfile] = useState<any>(null);
 	const [liffReady, setLiffReady] = useState(false);
+	const [retryCount, setRetryCount] = useState(0);
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
 
@@ -126,34 +127,55 @@ export default function StampRallyPage() {
 		if (!liffReady) return;
 		async function initLiff() {
 			try {
+				console.log("LIFF初期化開始... (試行回数:", retryCount + 1, ")");
 				await window.liff.init({ liffId });
+				console.log("LIFF初期化完了");
 				
-				// LINEアプリ内でない場合の処理を改善
-				if (!window.liff.isInClient()) {
-					// 外部ブラウザの場合は直接ログイン
-					if (!window.liff.isLoggedIn()) {
-						window.liff.login();
-						return;
-					}
-				}
+				// LINEアプリ内かどうかをチェック
+				const isInClient = window.liff.isInClient();
+				console.log("LINEアプリ内:", isInClient);
 				
 				// ログイン状態をチェック
-				if (!window.liff.isLoggedIn()) {
-					// LINEアプリ内でログインしていない場合
+				const isLoggedIn = window.liff.isLoggedIn();
+				console.log("ログイン状態:", isLoggedIn);
+				
+				if (!isLoggedIn) {
+					console.log("ログインしていないため、ログイン画面にリダイレクト");
 					window.liff.login();
 					return;
 				}
 				
+				console.log("プロフィール取得中...");
 				const prof = await window.liff.getProfile();
+				console.log("プロフィール取得成功:", prof);
 				setProfile(prof);
 				setLiffLoading(false);
+				setRetryCount(0); // 成功したらリトライカウントをリセット
 			} catch (e: any) {
 				console.error("LIFF initialization error:", e);
+				console.error("エラー詳細:", {
+					message: e.message,
+					code: e.code,
+					stack: e.stack
+				});
+				
+				// リトライ機能（最大3回まで）
+				if (retryCount < 2) {
+					console.log("リトライ中... (", retryCount + 1, "/3)");
+					setRetryCount(prev => prev + 1);
+					setTimeout(() => {
+						initLiff();
+					}, 1000 * (retryCount + 1)); // 1秒、2秒、3秒の間隔でリトライ
+					return;
+				}
+				
 				// より具体的なエラーメッセージ
 				if (e.message && e.message.includes('UNAUTHORIZED')) {
 					setLiffError("LINEログインが必要です。LINEアプリ内で開いてください。");
 				} else if (e.message && e.message.includes('FORBIDDEN')) {
 					setLiffError("アクセスが拒否されました。LINEアプリ内で開いてください。");
+				} else if (e.message && e.message.includes('INIT_FAILED')) {
+					setLiffError("LIFF初期化に失敗しました。LINEアプリ内で開いてください。");
 				} else {
 					setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
 				}
@@ -161,7 +183,7 @@ export default function StampRallyPage() {
 			}
 		}
 		initLiff();
-	}, [liffReady]);
+	}, [liffReady, retryCount]);
 
 	useEffect(() => {
 		const stamped = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
@@ -517,13 +539,50 @@ export default function StampRallyPage() {
 					fontSize: "14px", 
 					color: "#666", 
 					fontWeight: "normal",
-					lineHeight: "1.5"
+					lineHeight: "1.5",
+					marginBottom: "20px"
 				}}>
 					解決方法：<br />
 					1. LINEアプリ内で開いていることを確認<br />
 					2. ページを再読み込み<br />
 					3. LINEアプリを再起動してから再度お試しください
 				</div>
+				<button 
+					onClick={() => {
+						setLiffError("");
+						setLiffLoading(true);
+						setRetryCount(0);
+						// LIFFを再初期化
+						if (window.liff) {
+							window.liff.init({ liffId }).then(() => {
+								if (!window.liff.isLoggedIn()) {
+									window.liff.login();
+								} else {
+									window.liff.getProfile().then((prof: any) => {
+										setProfile(prof);
+										setLiffLoading(false);
+									});
+								}
+							}).catch((e: any) => {
+								console.error("Retry failed:", e);
+								setLiffError("再試行に失敗しました。LINEアプリ内で開いてください。");
+								setLiffLoading(false);
+							});
+						}
+					}}
+					style={{
+						background: "#00c300",
+						color: "white",
+						border: "none",
+						padding: "10px 20px",
+						borderRadius: "5px",
+						fontSize: "14px",
+						cursor: "pointer",
+						fontWeight: "bold"
+					}}
+				>
+					再試行
+				</button>
 			</div>
 		);
 	}
