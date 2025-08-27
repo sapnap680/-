@@ -75,14 +75,8 @@ declare global {
 const liffId = "2007663892-mQOQRy2z";
 
 type StampHistory = { stampNumber: number; venueName: string; date: string; source: string };
+// Firestore へ保存するキーは LINE userId を想定
 
-// LINEユーザープロフィールの型定義
-type LineProfile = {
-	userId: string;
-	displayName: string;
-	pictureUrl?: string;
-	statusMessage?: string;
-};
 
 const stampQRCodes: { [key: string]: number } = {};
 for (let i = 1; i <= totalStamps; i++) {
@@ -97,12 +91,10 @@ export default function StampRallyPage() {
 	const [showStaffConfirm, setShowStaffConfirm] = useState(false);
 	const [adminOpen, setAdminOpen] = useState(false);
 
-	// LINEログイン関連の状態
-	const [isReady, setIsReady] = useState(false);
-	const [isLoggedIn, setIsLoggedIn] = useState(false);
-	const [profile, setProfile] = useState<LineProfile | null>(null);
-	const [isLiffInitialized, setIsLiffInitialized] = useState(false);
-	
+	const [liffLoading, setLiffLoading] = useState(true);
+	const [liffError, setLiffError] = useState("");
+	const [profile, setProfile] = useState<any>(null);
+	const [liffReady, setLiffReady] = useState(false);
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
 
@@ -130,118 +122,25 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-	// LIFF初期化
 	useEffect(() => {
-		const initializeLiff = async () => {
+		if (!liffReady) return;
+		async function initLiff() {
 			try {
 				await window.liff.init({ liffId });
-				setIsLiffInitialized(true);
-				
-				if (window.liff.isLoggedIn()) {
-					setIsLoggedIn(true);
-					const profile = await window.liff.getProfile();
-					setProfile(profile);
+				if (!window.liff.isLoggedIn()) {
+					window.liff.login();
+					return;
 				}
-				
-				setIsReady(true);
-			} catch (error) {
-				console.error('LIFF initialization failed', error);
-				setIsReady(true); // エラーでもアプリは動作させる
+				const prof = await window.liff.getProfile();
+				setProfile(prof);
+				setLiffLoading(false);
+			} catch (e: any) {
+				setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
+				setLiffLoading(false);
 			}
-		};
-
-		if (window.liff) {
-			initializeLiff();
 		}
-	}, []);
-
-	// LINEログイン処理
-	const handleLineLogin = async () => {
-		try {
-			if (!window.liff.isLoggedIn()) {
-				window.liff.login();
-			}
-		} catch (error) {
-			console.error('LINE login failed', error);
-			setOutputMessage('LINEログインに失敗しました');
-		}
-	};
-
-	// LINEログアウト処理
-	const handleLineLogout = async () => {
-		try {
-			if (window.liff.isLoggedIn()) {
-				window.liff.logout();
-				setIsLoggedIn(false);
-				setProfile(null);
-				setOutputMessage('ログアウトしました');
-			}
-		} catch (error) {
-			console.error('LINE logout failed', error);
-		}
-	};
-
-	// Firestore同期機能
-	const syncToFirestore = async (newHistory: StampHistory[]) => {
-		if (!profile?.userId) return;
-		
-		try {
-			setSyncing(true);
-			const ref = doc(db, "stamp_rallies", profile.userId);
-			const snap = await getDoc(ref);
-			
-			if (snap.exists()) {
-				await updateDoc(ref, { 
-					history: newHistory,
-					updatedAt: new Date()
-				});
-			} else {
-				await setDoc(ref, { 
-					history: newHistory,
-					userId: profile.userId,
-					displayName: profile.displayName,
-					createdAt: new Date(),
-					updatedAt: new Date()
-				});
-			}
-		} catch (error) {
-			console.error('Firestore sync failed', error);
-		} finally {
-			setSyncing(false);
-		}
-	};
-
-	// Firestoreからデータ読み込み
-	const loadFromFirestore = async () => {
-		if (!profile?.userId) return;
-		
-		try {
-			setSyncing(true);
-			const ref = doc(db, "stamp_rallies", profile.userId);
-			const snap = await getDoc(ref);
-			
-			if (snap.exists()) {
-				const data = snap.data() as { history?: StampHistory[] };
-				if (data.history && data.history.length > 0) {
-					setHistory(data.history);
-					setStampedNumbers(data.history.map(h => h.stampNumber));
-					localStorage.setItem("stamps_v1", JSON.stringify(data.history.map(h => h.stampNumber)));
-					localStorage.setItem("stamp_history_v1", JSON.stringify(data.history));
-				}
-			}
-		} catch (error) {
-			console.error('Failed to load from Firestore', error);
-		} finally {
-			setSyncing(false);
-		}
-	};
-
-	// ログイン状態が変わった時にFirestoreからデータを読み込み
-	useEffect(() => {
-		if (isLoggedIn && profile?.userId) {
-			loadFromFirestore();
-		}
-	}, [isLoggedIn, profile?.userId]);
+		initLiff();
+	}, [liffReady]);
 
 	useEffect(() => {
 		const stamped = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
@@ -253,25 +152,91 @@ export default function StampRallyPage() {
 	useEffect(() => {
 		localStorage.setItem("stamps_v1", JSON.stringify(stampedNumbers));
 		localStorage.setItem("stamp_history_v1", JSON.stringify(history));
-		
-		// LINEログイン中はFirestoreに同期
-		if (isLoggedIn && profile?.userId) {
-			syncToFirestore(history);
+	}, [stampedNumbers, history]);
+
+	// Firestoreから履歴読み込み（ログイン後）
+	useEffect(() => {
+		async function loadFromFirestore() {
+			if (!profile?.userId) return;
+			try {
+				const ref = doc(db, "stamp_rallies", profile.userId);
+				const snap = await getDoc(ref);
+				if (snap.exists()) {
+					const data = snap.data() as { history?: StampHistory[] };
+					if (data.history && data.history.length > 0) {
+						// Firestoreにデータがある場合、ローカルと比較
+						const localStamps = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
+						const localHistory = JSON.parse(localStorage.getItem("stamp_history_v1") || "[]");
+						
+						// Firestoreの方が新しい場合は同期
+						if (data.history.length > localHistory.length) {
+							setHistory(data.history);
+							setStampedNumbers(data.history.map(h => h.stampNumber));
+							localStorage.setItem("stamps_v1", JSON.stringify(data.history.map(h => h.stampNumber)));
+							localStorage.setItem("stamp_history_v1", JSON.stringify(data.history));
+						} else {
+							// ローカルの方が新しい場合、一斉同期
+							await syncOfflineData(localHistory, data.history);
+						}
+					} else {
+						// Firestoreが空の場合は、ローカルもクリア
+						setHistory([]);
+						setStampedNumbers([]);
+						localStorage.removeItem("stamps_v1");
+						localStorage.removeItem("stamp_history_v1");
+					}
+				} else {
+					// Firestoreにドキュメントが存在しない場合、ローカルもクリア
+					setHistory([]);
+					setStampedNumbers([]);
+					localStorage.removeItem("stamps_v1");
+					localStorage.removeItem("stamp_history_v1");
+				}
+			} catch (err) {
+				console.error("Failed to load from Firestore", err);
+			}
 		}
-	}, [stampedNumbers, history, isLoggedIn, profile?.userId]);
+		loadFromFirestore();
+	}, [profile?.userId]);
+	
+	// オフラインで獲得したデータを一斉同期
+	async function syncOfflineData(localHistory: StampHistory[], firestoreHistory: StampHistory[]) {
+		if (!profile?.userId) return;
+		
+		try {
+			const ref = doc(db, "stamp_rallies", profile.userId);
+			
+			// ローカルにあってFirestoreにないデータを特定
+			const newEntries = localHistory.filter(local => 
+				!firestoreHistory.some(firestore => 
+					local.stampNumber === firestore.stampNumber &&
+					local.venueName === firestore.venueName &&
+					local.date === firestore.date
+				)
+			);
+			
+			if (newEntries.length > 0) {
+				// 一斉送信
+				await updateDoc(ref, { history: arrayUnion(...newEntries) });
+				console.log(`${newEntries.length}件のオフラインデータを同期しました`);
+			}
+		} catch (err) {
+			console.error("Failed to sync offline data", err);
+		}
+	}
 
 	useEffect(() => {
-		if (!isReady) return;
+		if (!profile) return;
 		const params = new URLSearchParams(window.location.search);
 		const stampParam = params.get("stamp");
 		if (stampParam) {
-			handleQRCode(stampParam);
+			handleQRCode(stampParam, profile);
 			params.delete("stamp");
 			window.history.replaceState({}, "", window.location.pathname + (params.toString() ? "?" + params.toString() : ""));
 		}
-	}, [isReady]);
+	}, [profile]);
 
-	async function handleQRCode(qrValue: string) {
+	async function handleQRCode(qrValue: string, prof: any) {
 		const qrStampNumber = stampQRCodes[qrValue];
 		if (!qrStampNumber || qrStampNumber < 1 || qrStampNumber > totalStamps) {
 			setOutputMessage("無効なQRコードです");
@@ -318,10 +283,23 @@ export default function StampRallyPage() {
 			}
 			const nowStr = new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 			const nextStampNumber = stampedNumbers.length + 1;
-			const source = isLoggedIn && profile ? `QR / ${profile.displayName}` : "QR / ゲスト";
-			const newEntry: StampHistory = { stampNumber: nextStampNumber, venueName: closestVenue.name, date: nowStr, source };
+			const newEntry: StampHistory = { stampNumber: nextStampNumber, venueName: closestVenue.name, date: nowStr, source: `QR / ${prof.displayName || "ゲスト"}` };
 			setStampedNumbers([...stampedNumbers, nextStampNumber]);
 			setHistory([...history, newEntry]);
+			// Firestoreへ追記
+			try {
+				if (profile?.userId) {
+					const ref = doc(db, "stamp_rallies", profile.userId);
+					const snap = await getDoc(ref);
+					if (snap.exists()) {
+						await updateDoc(ref, { history: arrayUnion(newEntry) });
+					} else {
+						await setDoc(ref, { history: [newEntry], createdAt: new Date() });
+					}
+				}
+			} catch (err) {
+				console.error("Failed to sync Firestore", err);
+			}
 			setOutputMessage(`スタンプ${nextStampNumber}を獲得！（会場: ${closestVenue.name}）`);
 
 		} catch (e: any) {
@@ -384,6 +362,19 @@ export default function StampRallyPage() {
 		const adminEntry: StampHistory = { stampNumber: nextStamp, venueName: venueNameForAdmin, date: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }), source: "admin" };
 		setStampedNumbers([...stampedNumbers, nextStamp]);
 		setHistory([...history, adminEntry]);
+		try {
+			if (profile?.userId) {
+				const ref = doc(db, "stamp_rallies", profile.userId);
+				const snap = await getDoc(ref);
+				if (snap.exists()) {
+					await updateDoc(ref, { history: arrayUnion(adminEntry) });
+				} else {
+					await setDoc(ref, { history: [adminEntry], createdAt: new Date() });
+				}
+			}
+		} catch (err) {
+			console.error("Failed to sync Firestore (admin)", err);
+		}
 		setOutputMessage(`スタンプ${nextStamp}を追加しました（会場: ${venueNameForAdmin}）`);
 	}
 
@@ -403,6 +394,28 @@ export default function StampRallyPage() {
 		setStampedNumbers(prev => prev.slice(0, -1));
 		setHistory(prev => prev.slice(0, -1));
 		
+		// Firestoreからも削除
+		try {
+			if (profile?.userId) {
+				const ref = doc(db, "stamp_rallies", profile.userId);
+				const snap = await getDoc(ref);
+				if (snap.exists()) {
+					const data = snap.data() as { history?: StampHistory[] };
+					if (data.history) {
+						// 最後の履歴を除いた新しい履歴を作成
+						const newHistory = data.history.filter(h => 
+							!(h.stampNumber === lastHistory.stampNumber && 
+							  h.venueName === lastHistory.venueName && 
+							  h.date === lastHistory.date)
+						);
+						await updateDoc(ref, { history: newHistory });
+					}
+				}
+			}
+		} catch (err) {
+			console.error("Failed to sync Firestore (delete)", err);
+		}
+		
 		setOutputMessage(`スタンプ${last}を削除しました`);
 	}
 
@@ -421,6 +434,15 @@ export default function StampRallyPage() {
 		localStorage.removeItem("stamps_v1");
 		localStorage.removeItem("stamp_history_v1");
 		localStorage.removeItem("claimed_prizes_v1");
+		// Firestoreからも削除
+		try {
+			if (profile?.userId) {
+				const ref = doc(db, "stamp_rallies", profile.userId);
+				await updateDoc(ref, { history: [] });
+			}
+		} catch (err) {
+			console.error("Failed to reset Firestore", err);
+		}
 		
 		setOutputMessage("全てのスタンプをリセットしました");
 	}
@@ -458,53 +480,30 @@ export default function StampRallyPage() {
 		return topName ? { name: topName, count: topCount } : null;
 	})();
 
-	if (!isReady) {
+	if (liffError) {
+		return (
+			<div style={{ color: "red", fontWeight: "bold", textAlign: "center", marginTop: "40px" }}>{liffError}</div>
+		);
+	}
+	if (liffLoading || !profile) {
 		return (
 			<div style={{ textAlign: "center", marginTop: "40px" }}>
 				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
-				<h2>読み込み中...</h2>
+				<h2>LINE認証中...</h2>
+				<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
 			</div>
 		);
 	}
 
 	return (
 		<>
+			<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
 			<header>
 				<Image src="/autumn_logo.png" className="logo" alt="AUTUMN LEAGUE LOGO" width={110} height={110} />
 				<div className="main-title">AUTUMN LEAGUE</div>
 				<div className="subtitle">スタンプラリー</div>
 			</header>
-			
-			{/* LINEログイン状態表示 */}
-			<div className="line-status">
-				{isLoggedIn && profile ? (
-					<div className="logged-in-status">
-						<div className="profile-info">
-							{profile.pictureUrl && (
-								<img src={profile.pictureUrl} alt="プロフィール画像" className="profile-pic" />
-							)}
-							<div className="profile-details">
-								<div className="display-name">{profile.displayName}</div>
-								<div className="sync-status">
-									{syncing ? "同期中..." : "LINE連携済み"}
-								</div>
-							</div>
-						</div>
-						<button onClick={handleLineLogout} className="logout-btn">
-							ログアウト
-						</button>
-					</div>
-				) : (
-					<div className="login-prompt">
-						<div className="login-text">
-							LINEでログインすると、データがクラウドに保存されます
-						</div>
-						<button onClick={handleLineLogin} className="login-btn">
-							LINEでログイン
-						</button>
-					</div>
-				)}
-			</div>
+			{/* line-status block removed per request */}
 
 			{/* 獲得履歴の上に進捗まとめと最も行った会場を配置 */}
 			<div style={{ maxWidth: 600, margin: "0 auto", padding: "0 12px" }}>
@@ -769,30 +768,6 @@ export default function StampRallyPage() {
 				.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; background: #fff; color: #333; border-radius: 10px; box-shadow: 0 10px 30px #0002; z-index: 50; padding: 12px 14px; border: 1px solid #eee; min-width: 260px; max-width: 90%; }
 				.toast-body { font-weight: 600; }
 				.toast-action { font-size: 12px; color: #666; margin-top: 6px; }
-				
-				/* LINEログイン関連 */
-				.line-status { max-width: 600px; margin: 0 auto 20px; padding: 0 12px; }
-				.logged-in-status { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 12px 16px; }
-				.profile-info { display: flex; align-items: center; gap: 12px; }
-				.profile-pic { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #00c300; }
-				.profile-details { display: flex; flex-direction: column; }
-				.display-name { font-weight: bold; color: #333; font-size: 1.1em; }
-				.sync-status { font-size: 0.9em; color: #00c300; font-weight: 600; }
-				.logout-btn { background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-				.logout-btn:hover { background: #c82333; }
-				.login-prompt { text-align: center; background: #fffbe7; border: 1px solid #ffd700; border-radius: 10px; padding: 16px; }
-				.login-text { color: #666; margin-bottom: 12px; font-size: 0.95em; }
-				.login-btn { background: #00c300; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 1.1em; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px #00c30044; }
-				.login-btn:hover { background: #00a000; transform: translateY(-1px); box-shadow: 0 4px 12px #00c30066; }
-				@media (max-width: 480px) {
-					.logged-in-status { flex-direction: column; gap: 12px; text-align: center; }
-					.profile-info { justify-content: center; }
-					.login-btn { width: 100%; }
-				}
-				
-				/* 最も行った会場 */
-				.most-visited { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 10px 12px; margin: 12px 0; font-size: 0.95em; color: #666; }
-				.most-visited strong { color: #a97b2c; font-weight: bold; }
 			`}</style>
 		</>
 	);
