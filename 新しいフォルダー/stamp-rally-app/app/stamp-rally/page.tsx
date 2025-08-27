@@ -126,15 +126,29 @@ export default function StampRallyPage() {
 		if (!liffReady) return;
 		async function initLiff() {
 			try {
+				// LIFF SDKが正しく読み込まれているかチェック
+				if (!window.liff) {
+					setLiffError("LIFF SDKが読み込まれていません。LINEアプリ内で開いてください。");
+					setLiffLoading(false);
+					return;
+				}
+
+				// LIFF初期化（シンプルに）
 				await window.liff.init({ liffId });
+				
+				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
+					// シンプルなログイン（リダイレクトURI指定なし）
 					window.liff.login();
 					return;
 				}
+
+				// プロフィール取得
 				const prof = await window.liff.getProfile();
 				setProfile(prof);
 				setLiffLoading(false);
 			} catch (e: any) {
+				// エラーメッセージをシンプルに
 				setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
 				setLiffLoading(false);
 			}
