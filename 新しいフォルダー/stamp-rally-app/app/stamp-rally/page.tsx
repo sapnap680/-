@@ -6,7 +6,7 @@ import Script from "next/script";
 import { db } from "@/src/lib/firebase";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-const totalStamps = 22;
+const totalStamps = 23;
 const venues = [
 	{ name: "大田区総合体育館", lat: 35.5643207, lon: 139.7278943 },
 	{ name: "筑波大学", lat: 36.1025753, lon: 140.1038015 },
@@ -43,15 +43,16 @@ const stampDateRestrictions: { [key: number]: { end: string } } = {
 	11: { end: "2025-09-28" },
 	12: { end: "2025-10-04" },
 	13: { end: "2025-10-05" },
-	14: { end: "2025-10-11" },
-	15: { end: "2025-10-12" },
-	16: { end: "2025-10-13" },
-	17: { end: "2025-10-18" },
-	18: { end: "2025-10-19" },
-	19: { end: "2025-10-25" },
-	20: { end: "2025-10-26" },
-	21: { end: "2025-11-01" },
-	22: { end: "2025-11-02" },
+	14: { end: "2025-10-10" },
+	15: { end: "2025-10-11" },
+	16: { end: "2025-10-12" },
+	17: { end: "2025-10-13" },
+	18: { end: "2025-10-18" },
+	19: { end: "2025-10-19" },
+	20: { end: "2025-10-25" },
+	21: { end: "2025-10-26" },
+	22: { end: "2025-11-01" },
+	23: { end: "2025-11-02" },
 };
 
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -124,66 +125,22 @@ export default function StampRallyPage() {
 	useEffect(() => {
 		if (!liffReady) return;
 		async function initLiff() {
-			if (!window.liff) {
-				setLiffError("LIFF SDKが読み込まれていません。LINEアプリで開いてください。");
-				setLiffLoading(false);
-				return;
-			}
 			try {
 				await window.liff.init({ liffId });
 				if (!window.liff.isLoggedIn()) {
-					// 常にLIFFに登録したエンドポイント配下に戻す
-					const params = new URLSearchParams(window.location.search);
-					const stamp = params.get("stamp");
-					const basePath = "/stamp-rally";
-					const redirectUri = window.location.origin + basePath + (stamp ? `?stamp=${encodeURIComponent(stamp)}` : "");
-					// ログイン再帰ループ抑止（短時間での多重遷移を抑える）
-					try {
-						const last = sessionStorage.getItem("liffLoginTriedAt");
-						if (last && Date.now() - parseInt(last) < 15000) {
-							setLiffError("LINEログインに戻りました。LINEアプリ内で開いているか、LIFFのURL設定をご確認ください。");
-							setLiffLoading(false);
-							return;
-						}
-						sessionStorage.setItem("liffLoginTriedAt", String(Date.now()));
-					} catch {}
-					window.liff.login({ redirectUri });
+					window.liff.login();
 					return;
 				}
 				const prof = await window.liff.getProfile();
 				setProfile(prof);
 				setLiffLoading(false);
 			} catch (e: any) {
-				setLiffError("LINEログイン必須です。再読込してください。");
+				setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
 				setLiffLoading(false);
-				console.error(e);
 			}
 		}
 		initLiff();
 	}, [liffReady]);
-
-	// 初期化が長引く場合のフォールバック表示
-	useEffect(() => {
-		const timer = setTimeout(() => {
-			if (liffLoading && !profile && !liffError) {
-				setLiffError("LIFFの初期化が長引いています。LINEアプリ内で開いているか、LIFFのEndpoint URLと実際のURLが一致しているか確認してください。");
-			}
-		}, 15000);
-		return () => clearTimeout(timer);
-	}, [liffLoading, profile, liffError]);
-
-	function retryLogin() {
-		try {
-			if (typeof window === "undefined" || !window.liff) return;
-			const params = new URLSearchParams(window.location.search);
-			const stamp = params.get("stamp");
-			const basePath = "/stamp-rally";
-			const redirectUri = window.location.origin + basePath + (stamp ? `?stamp=${encodeURIComponent(stamp)}` : "");
-			window.liff.login({ redirectUri });
-		} catch (e) {
-			console.error(e);
-		}
-	}
 
 	useEffect(() => {
 		const stamped = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
@@ -197,50 +154,50 @@ export default function StampRallyPage() {
 		localStorage.setItem("stamp_history_v1", JSON.stringify(history));
 	}, [stampedNumbers, history]);
 
-	// Firestoreから履歴読み込み（ログイン後）
-	useEffect(() => {
-		async function loadFromFirestore() {
-			if (!profile?.userId) return;
-			try {
-				const ref = doc(db, "stamp_rallies", profile.userId);
-				const snap = await getDoc(ref);
-				if (snap.exists()) {
-					const data = snap.data() as { history?: StampHistory[] };
-					if (data.history && data.history.length > 0) {
-						// Firestoreにデータがある場合、ローカルと比較
-						const localStamps = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
-						const localHistory = JSON.parse(localStorage.getItem("stamp_history_v1") || "[]");
-						
-						// Firestoreの方が新しい場合は同期
-						if (data.history.length > localHistory.length) {
-							setHistory(data.history);
-							setStampedNumbers(data.history.map(h => h.stampNumber));
-							localStorage.setItem("stamps_v1", JSON.stringify(data.history.map(h => h.stampNumber)));
-							localStorage.setItem("stamp_history_v1", JSON.stringify(data.history));
-						} else {
-							// ローカルの方が新しい場合、一斉同期
-							await syncOfflineData(localHistory, data.history);
-						}
-					} else {
-						// Firestoreが空の場合は、ローカルもクリア
-						setHistory([]);
-						setStampedNumbers([]);
-						localStorage.removeItem("stamps_v1");
-						localStorage.removeItem("stamp_history_v1");
-					}
-				} else {
-					// Firestoreにドキュメントが存在しない場合、ローカルもクリア
-					setHistory([]);
-					setStampedNumbers([]);
-					localStorage.removeItem("stamps_v1");
-					localStorage.removeItem("stamp_history_v1");
-				}
-			} catch (err) {
-				console.error("Failed to load from Firestore", err);
-			}
-		}
-		loadFromFirestore();
-	}, [profile?.userId]);
+	// Firestore同期を一時的に無効化（LINEログイン問題解決のため）
+	// useEffect(() => {
+	// 	async function loadFromFirestore() {
+	// 		if (!profile?.userId) return;
+	// 		try {
+	// 			const ref = doc(db, "stamp_rallies", profile.userId);
+	// 			const snap = await getDoc(ref);
+	// 			if (snap.exists()) {
+	// 				const data = snap.data() as { history?: StampHistory[] };
+	// 				if (data.history && data.history.length > 0) {
+	// 					// Firestoreにデータがある場合、ローカルと比較
+	// 					const localStamps = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
+	// 					const localHistory = JSON.parse(localStorage.getItem("stamp_history_v1") || "[]");
+	// 					
+	// 					// Firestoreの方が新しい場合は同期
+	// 					if (data.history.length > localHistory.length) {
+	// 						setHistory(data.history);
+	// 						setStampedNumbers(data.history.map(h => h.stampNumber));
+	// 						localStorage.setItem("stamps_v1", JSON.stringify(data.history.map(h => h.stampNumber)));
+	// 						localStorage.setItem("stamp_history_v1", JSON.stringify(data.history));
+	// 					} else {
+	// 						// ローカルの方が新しい場合、一斉同期
+	// 						await syncOfflineData(localHistory, data.history);
+	// 					}
+	// 				} else {
+	// 					// Firestoreが空の場合は、ローカルもクリア
+	// 					setHistory([]);
+	// 					setStampedNumbers([]);
+	// 					localStorage.removeItem("stamps_v1");
+	// 					localStorage.removeItem("stamp_history_v1");
+	// 				}
+	// 			} else {
+	// 				// Firestoreにドキュメントが存在しない場合、ローカルもクリア
+	// 				setHistory([]);
+	// 				setStampedNumbers([]);
+	// 				localStorage.removeItem("stamps_v1");
+	// 				localStorage.removeItem("stamp_history_v1");
+	// 			}
+	// 		} catch (err) {
+	// 			console.error("Failed to load from Firestore", err);
+	// 		}
+	// 	}
+	// 	loadFromFirestore();
+	// }, [profile?.userId]);
 	
 	// オフラインで獲得したデータを一斉同期
 	async function syncOfflineData(localHistory: StampHistory[], firestoreHistory: StampHistory[]) {
@@ -534,12 +491,6 @@ export default function StampRallyPage() {
 				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
 				<h2>LINE認証中...</h2>
 				<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
-				<div style={{ marginTop: 12 }}>
-					<button onClick={retryLogin} style={{ padding: "8px 14px", borderRadius: 6, background: "#00c300", color: "#fff", fontWeight: 700 }}>ログインを再試行</button>
-				</div>
-				<div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-					URL: {typeof window !== "undefined" ? window.location.href : ""}
-				</div>
 			</div>
 		);
 	}
@@ -668,7 +619,7 @@ export default function StampRallyPage() {
 						</div>
 					);
 				})}
-				{/* 日程表ボタン - スタンプ22の右側 */}
+				{/* 日程表ボタン - スタンプ23の右側 */}
 				<button 
 					className="schedule-btn-in-grid" 
 					onClick={() => window.open('https://www.kcbbf.jp/index/show-pdf/url/aHR0cHM6Ly9kMmEwdjF4N3F2eGw2Yy5jbG91ZGZyb250Lm5ldC9maWxlcy9zcG9ocF9rY2JiZi9nYW1lX2NhdGVnb3J5LzY4OTMxYzEzMjk5ZmQucGRm', '_blank')}

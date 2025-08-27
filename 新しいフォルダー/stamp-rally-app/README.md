@@ -26,3 +26,5 @@ npm run build && npm start
 - Images used by Next/Image and CSS are in `public/`
 - LIFF ID is configured in `app/stamp-rally/page.tsx`
 - The root route redirects to `/stamp-rally`
+
+
