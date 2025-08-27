@@ -127,15 +127,36 @@ export default function StampRallyPage() {
 		async function initLiff() {
 			try {
 				await window.liff.init({ liffId });
+				
+				// LINEアプリ内でない場合の処理を改善
+				if (!window.liff.isInClient()) {
+					// 外部ブラウザの場合は直接ログイン
+					if (!window.liff.isLoggedIn()) {
+						window.liff.login();
+						return;
+					}
+				}
+				
+				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
+					// LINEアプリ内でログインしていない場合
 					window.liff.login();
 					return;
 				}
+				
 				const prof = await window.liff.getProfile();
 				setProfile(prof);
 				setLiffLoading(false);
 			} catch (e: any) {
-				setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
+				console.error("LIFF initialization error:", e);
+				// より具体的なエラーメッセージ
+				if (e.message && e.message.includes('UNAUTHORIZED')) {
+					setLiffError("LINEログインが必要です。LINEアプリ内で開いてください。");
+				} else if (e.message && e.message.includes('FORBIDDEN')) {
+					setLiffError("アクセスが拒否されました。LINEアプリ内で開いてください。");
+				} else {
+					setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
+				}
 				setLiffLoading(false);
 			}
 		}
@@ -482,7 +503,28 @@ export default function StampRallyPage() {
 
 	if (liffError) {
 		return (
-			<div style={{ color: "red", fontWeight: "bold", textAlign: "center", marginTop: "40px" }}>{liffError}</div>
+			<div style={{ 
+				color: "red", 
+				fontWeight: "bold", 
+				textAlign: "center", 
+				marginTop: "40px",
+				padding: "20px",
+				maxWidth: "400px",
+				margin: "40px auto 0 auto"
+			}}>
+				<div style={{ marginBottom: "15px" }}>{liffError}</div>
+				<div style={{ 
+					fontSize: "14px", 
+					color: "#666", 
+					fontWeight: "normal",
+					lineHeight: "1.5"
+				}}>
+					解決方法：<br />
+					1. LINEアプリ内で開いていることを確認<br />
+					2. ページを再読み込み<br />
+					3. LINEアプリを再起動してから再度お試しください
+				</div>
+			</div>
 		);
 	}
 	if (liffLoading || !profile) {
