@@ -124,21 +124,22 @@ export default function StampRallyPage() {
 
 	useEffect(() => {
 		if (!liffReady) return;
-		async function initLiff() {
+		
+		// 少し待ってから初期化（LIFF SDKの読み込み完了を確実にする）
+		const timer = setTimeout(async () => {
 			try {
 				// LIFF SDKが正しく読み込まれているかチェック
 				if (!window.liff) {
-					setLiffError("LIFF SDKが読み込まれていません。LINEアプリ内で開いてください。");
+					setLiffError("LIFF SDKが読み込まれていません。ページを再読み込みしてください。");
 					setLiffLoading(false);
 					return;
 				}
 
-				// LIFF初期化（シンプルに）
+				// LIFF初期化
 				await window.liff.init({ liffId });
 				
 				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
-					// シンプルなログイン（リダイレクトURI指定なし）
 					window.liff.login();
 					return;
 				}
@@ -148,12 +149,19 @@ export default function StampRallyPage() {
 				setProfile(prof);
 				setLiffLoading(false);
 			} catch (e: any) {
-				// エラーメッセージをシンプルに
-				setLiffError("LINEログインに失敗しました。LINEアプリ内で開いてください。");
+				// より具体的なエラーメッセージ
+				if (e.message && e.message.includes('not in LIFF browser')) {
+					setLiffError("LINEアプリ内で開いてください。");
+				} else if (e.message && e.message.includes('LIFF ID')) {
+					setLiffError("LIFF設定に問題があります。管理者にお問い合わせください。");
+				} else {
+					setLiffError("ログインに失敗しました。ページを再読み込みしてください。");
+				}
 				setLiffLoading(false);
 			}
-		}
-		initLiff();
+		}, 100); // 100ms待機
+
+		return () => clearTimeout(timer);
 	}, [liffReady]);
 
 	useEffect(() => {
