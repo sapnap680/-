@@ -122,11 +122,11 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-	useEffect(() => {
+		useEffect(() => {
 		if (!liffReady) return;
 		
-		// 少し待ってから初期化（LIFF SDKの読み込み完了を確実にする）
-		const timer = setTimeout(async () => {
+		// LIFF SDKの読み込みを待機
+		const initLiff = async () => {
 			try {
 				// LIFF SDKが正しく読み込まれているかチェック
 				if (!window.liff) {
@@ -135,14 +135,26 @@ export default function StampRallyPage() {
 					return;
 				}
 
-				// LIFF初期化
-				await window.liff.init({ liffId });
+				// LIFF初期化（より詳細な設定）
+				await window.liff.init({ 
+					liffId,
+					withLoginOnExternalBrowser: true
+				});
+				
+				// クライアント機能をチェック
+				if (!window.liff.isInClient()) {
+					// 外部ブラウザの場合
+					if (!window.liff.isLoggedIn()) {
+						window.liff.login();
+						return;
+					}
+				}
 				
 				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
 					try {
-					window.liff.login();
-					return;
+						window.liff.login();
+						return;
 					} catch (loginError: any) {
 						console.error("Login error:", loginError);
 						setLiffError("LINEログインに失敗しました。LINEアプリ内で開き直してください。");
@@ -166,13 +178,17 @@ export default function StampRallyPage() {
 					setLiffError("ネットワークエラーです。インターネット接続を確認してください。");
 				} else if (e.message && e.message.includes('timeout')) {
 					setLiffError("タイムアウトしました。ページを再読み込みしてください。");
+				} else if (e.message && e.message.includes('client features')) {
+					setLiffError("LINEアプリのバージョンが古い可能性があります。LINEアプリを最新版に更新してください。");
 				} else {
 					setLiffError(`ログインに失敗しました: ${e.message || '不明なエラー'}`);
 				}
 				setLiffLoading(false);
 			}
-		}, 100); // 100ms待機
+		};
 
+		// 少し待ってから初期化
+		const timer = setTimeout(initLiff, 200);
 		return () => clearTimeout(timer);
 	}, [liffReady]);
 
@@ -570,7 +586,19 @@ export default function StampRallyPage() {
 						認証完了後に自動処理します
 					</div>
 				)}
-				<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
+				<Script 
+					src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
+					strategy="beforeInteractive"
+					onLoad={() => {
+						console.log("LIFF SDK loaded");
+						setLiffReady(true);
+					}}
+					onError={(e) => {
+						console.error("LIFF SDK load error:", e);
+						setLiffError("LIFF SDKの読み込みに失敗しました。ページを再読み込みしてください。");
+						setLiffLoading(false);
+					}}
+				/>
 			</div>
 		);
 	}
