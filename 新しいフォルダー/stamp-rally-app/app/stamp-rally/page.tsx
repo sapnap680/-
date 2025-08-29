@@ -108,6 +108,9 @@ export default function StampRallyPage() {
 	// 受取済み景品のトラッキング
 	const [claimedPrizeNumbers, setClaimedPrizeNumbers] = useState<number[]>([]);
 	
+	// 特別スタンプ演出用
+	const [specialStampEffect, setSpecialStampEffect] = useState<number | null>(null);
+	
 	// 受取済み状態をlocalStorageから読み込み
 	useEffect(() => {
 		const claimed = JSON.parse(localStorage.getItem("claimed_prizes_v1") || "[]");
@@ -330,6 +333,12 @@ export default function StampRallyPage() {
 			const newEntry: StampHistory = { stampNumber: nextStampNumber, venueName: closestVenue.name, date: nowStr, source: `QR / ${prof.displayName || "ゲスト"}` };
 			setStampedNumbers([...stampedNumbers, nextStampNumber]);
 			setHistory([...history, newEntry]);
+			
+			// 特別スタンプの演出
+			if (specialStampNumbers.includes(nextStampNumber)) {
+				setSpecialStampEffect(nextStampNumber);
+				setTimeout(() => setSpecialStampEffect(null), 3000);
+			}
 			// Firestoreへ追記
 			try {
 				if (profile?.userId) {
@@ -344,7 +353,7 @@ export default function StampRallyPage() {
 			} catch (err) {
 				console.error("Failed to sync Firestore", err);
 			}
-			setOutputMessage(`スタンプ${nextStampNumber}を獲得！（会場: ${closestVenue.name}）`);
+			setOutputMessage(`スタンプ${nextStampNumber}を獲得！\n（会場: ${closestVenue.name}）`);
 
 		} catch (e: any) {
 			setOutputMessage(e.message || "位置情報取得エラー");
@@ -692,13 +701,26 @@ export default function StampRallyPage() {
 			</div>
 			{/* エラー/通知はモーダル風に */}
 			{outputMessage && (
-				<div className="toast" onClick={() => setOutputMessage("")}> 
+				<div className="toast" onClick={() => setOutputMessage("")} style={{ top: "50%", bottom: "auto", transform: "translateX(-50%) translateY(-50%)" }}> 
 					<div className="toast-body" style={{ whiteSpace: "pre-line" }}>{outputMessage}</div>
 					<div className="toast-action">タップで閉じる</div>
 				</div>
 			)}
+			
+			{/* 特別スタンプ演出 */}
+			{specialStampEffect && (
+				<div className="special-stamp-celebration" style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 200, pointerEvents: "none" }}>
+					<div className="celebration-text">
+						🎉 特別スタンプ獲得！ 🎉
+						<br />
+						<span style={{ fontSize: "1.2em", fontWeight: "bold" }}>
+							{specialStampEffect === 22 ? "❓" : "🎁"} ギフト（{specialStampEffect}個目）
+						</span>
+					</div>
+				</div>
+			)}
 			{showStaffConfirm && (
-				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)}>
+				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)} style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 100 }}>
 					<div className="confirm-label">
 						<span>🎉 おめでとうございます！</span>
 						<br />
@@ -818,6 +840,28 @@ export default function StampRallyPage() {
 				.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; background: #fff; color: #333; border-radius: 10px; box-shadow: 0 10px 30px #0002; z-index: 50; padding: 12px 14px; border: 1px solid #eee; min-width: 260px; max-width: 90%; }
 				.toast-body { font-weight: 600; }
 				.toast-action { font-size: 12px; color: #666; margin-top: 6px; }
+				
+				/* 特別スタンプ演出 */
+				.special-stamp-celebration { animation: celebration 3s ease-out forwards; }
+				.celebration-text { 
+					background: linear-gradient(45deg, #ffd700, #ffed4e, #ffd700); 
+					color: #b8860b; 
+					padding: 20px 30px; 
+					border-radius: 15px; 
+					font-size: 1.3em; 
+					font-weight: bold; 
+					text-align: center; 
+					box-shadow: 0 0 30px #ffd700, 0 0 60px #ffd700; 
+					border: 3px solid #ffd700;
+					text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+				}
+				@keyframes celebration {
+					0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+					20% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+					40% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+					80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+					100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+				}
 			`}</style>
 		</>
 	);
