@@ -94,7 +94,6 @@ export default function StampRallyPage() {
 	const [liffLoading, setLiffLoading] = useState(true);
 	const [liffError, setLiffError] = useState("");
 	const [profile, setProfile] = useState<any>(null);
-	const [liffReady, setLiffReady] = useState(false);
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
 
@@ -122,28 +121,21 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-		// フォールバックイベントリスナー
+	// LIFF初期化（シンプル版）
 	useEffect(() => {
-		const handleLiffReady = () => {
-			console.log("LIFF ready event received");
-			setLiffReady(true);
-		};
-
-		window.addEventListener('liffReady', handleLiffReady);
-		return () => window.removeEventListener('liffReady', handleLiffReady);
-	}, []);
-
-	useEffect(() => {
-		if (!liffReady) return;
-		
-		// LIFF SDKの読み込みを待機
 		const initLiff = async () => {
 			try {
 				console.log("Starting LIFF initialization...");
 				
-				// LIFF SDKが正しく読み込まれているかチェック
+				// LIFF SDKが読み込まれるまで待機
+				let attempts = 0;
+				while (!window.liff && attempts < 50) {
+					await new Promise(resolve => setTimeout(resolve, 100));
+					attempts++;
+				}
+				
 				if (!window.liff) {
-					console.error("LIFF SDK not found");
+					console.error("LIFF SDK not found after waiting");
 					setLiffError("LIFF SDKが読み込まれていません。ページを再読み込みしてください。");
 					setLiffLoading(false);
 					return;
@@ -151,28 +143,15 @@ export default function StampRallyPage() {
 
 				console.log("LIFF SDK found, initializing...");
 				
-				// LIFF初期化（より詳細な設定）
-				await window.liff.init({ 
-					liffId,
-					withLoginOnExternalBrowser: true
-				});
-				
+				// LIFF初期化
+				await window.liff.init({ liffId });
 				console.log("LIFF initialized successfully");
-				console.log("isInClient:", window.liff.isInClient());
-				console.log("isLoggedIn:", window.liff.isLoggedIn());
 				
 				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
-					try {
-						console.log("Not logged in, attempting login...");
-						window.liff.login();
-						return;
-					} catch (loginError: any) {
-						console.error("Login error:", loginError);
-						setLiffError("LINEログインに失敗しました。LINEアプリ内で開き直してください。");
-						setLiffLoading(false);
-						return;
-					}
+					console.log("Not logged in, redirecting to login...");
+					window.liff.login();
+					return;
 				}
 
 				console.log("Logged in, getting profile...");
@@ -182,18 +161,11 @@ export default function StampRallyPage() {
 				setProfile(prof);
 				setLiffLoading(false);
 			} catch (e: any) {
-				// より具体的なエラーメッセージ
 				console.error("LIFF initialization error:", e);
 				if (e.message && e.message.includes('not in LIFF browser')) {
 					setLiffError("LINEアプリ内で開いてください。ブラウザでは利用できません。");
 				} else if (e.message && e.message.includes('LIFF ID')) {
 					setLiffError("LIFF設定に問題があります。管理者にお問い合わせください。");
-				} else if (e.message && e.message.includes('network')) {
-					setLiffError("ネットワークエラーです。インターネット接続を確認してください。");
-				} else if (e.message && e.message.includes('timeout')) {
-					setLiffError("タイムアウトしました。ページを再読み込みしてください。");
-				} else if (e.message && e.message.includes('client features')) {
-					setLiffError("LINEアプリのバージョンが古い可能性があります。LINEアプリを最新版に更新してください。");
 				} else {
 					setLiffError(`ログインに失敗しました: ${e.message || '不明なエラー'}`);
 				}
@@ -201,10 +173,9 @@ export default function StampRallyPage() {
 			}
 		};
 
-		// 少し待ってから初期化
-		const timer = setTimeout(initLiff, 200);
-		return () => clearTimeout(timer);
-	}, [liffReady]);
+		// 初期化開始
+		initLiff();
+	}, []);
 
 	useEffect(() => {
 		const stamped = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
@@ -614,7 +585,7 @@ export default function StampRallyPage() {
 				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
 				<h2>LINE認証中...</h2>
 				<div style={{ fontSize: "12px", color: "#666", marginTop: "10px" }}>
-					デバッグ: liffReady={liffReady ? "true" : "false"}, liffLoading={liffLoading ? "true" : "false"}
+					デバッグ: liffLoading={liffLoading ? "true" : "false"}
 				</div>
 				{pendingStampParam && (
 					<div style={{ 
@@ -633,34 +604,8 @@ export default function StampRallyPage() {
 				)}
 				<Script 
 					src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
-					strategy="afterInteractive"
-					onLoad={() => {
-						console.log("LIFF SDK loaded successfully");
-						setLiffReady(true);
-					}}
-					onError={(e) => {
-						console.error("LIFF SDK load error:", e);
-						setLiffError("LIFF SDKの読み込みに失敗しました。ページを再読み込みしてください。");
-						setLiffLoading(false);
-					}}
+					strategy="beforeInteractive"
 				/>
-				{/* フォールバック: スクリプトが読み込まれない場合の処理 */}
-				{!liffReady && (
-					<script
-						dangerouslySetInnerHTML={{
-							__html: `
-								setTimeout(() => {
-									if (typeof window !== 'undefined' && window.liff) {
-										console.log("LIFF SDK loaded via fallback");
-										window.dispatchEvent(new CustomEvent('liffReady'));
-									} else {
-										console.error("LIFF SDK still not loaded after timeout");
-									}
-								}, 3000);
-							`
-						}}
-					/>
-				)}
 			</div>
 		);
 	}
