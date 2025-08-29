@@ -341,6 +341,7 @@ export default function StampRallyPage() {
 				setSpecialStampEffect(nextStampNumber);
 				setTimeout(() => setSpecialStampEffect(null), 3000);
 			}
+
 			// Firestoreへ追記
 			try {
 				if (profile?.userId) {
@@ -709,28 +710,22 @@ export default function StampRallyPage() {
 				</div>
 			)}
 			
-			{/* 特別スタンプ演出 */}
+			{/* 特別スタンプ演出 - 紙吹雪のみ */}
 			{specialStampEffect && (
-				<div className="special-stamp-celebration" style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 200, pointerEvents: "none" }}>
-					<div className="celebration-text">
-						🎉 おめでとうございます！ 🎉
-						<br />
-						<span style={{ fontSize: "1.2em", fontWeight: "bold" }}>
-							🎁 ギフト{giftNumbers[specialStampNumbers.indexOf(specialStampEffect)]}個目を獲得！
-						</span>
-					</div>
+				<div className="confetti-container" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 200, pointerEvents: "none" }}>
+					{Array.from({ length: 50 }, (_, i) => (
+						<div key={i} className={`confetti confetti-${i % 5}`} style={{
+							left: `${Math.random() * 100}%`,
+							animationDelay: `${Math.random() * 2}s`,
+							animationDuration: `${2 + Math.random() * 3}s`
+						}}></div>
+					))}
 				</div>
 			)}
 			{showStaffConfirm && (
 				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)}>
 					<div className="confirm-label">
-						<span>おめでとう</span>
-						<br />
-						<span>ございます！</span>
-						<br />
-						<span>{staffPrize}を</span>
-						<br />
-						<span>獲得しました！</span>
+						<span>おめでとうございます！</span>
 					</div>
 					<button onClick={() => {
 						setShowStaffConfirm(false);
@@ -845,26 +840,38 @@ export default function StampRallyPage() {
 				.toast-body { font-weight: 600; }
 				.toast-action { font-size: 12px; color: #666; margin-top: 6px; }
 				
-				/* 特別スタンプ演出 */
-				.special-stamp-celebration { animation: celebration 3s ease-out forwards; }
-				.celebration-text { 
-					background: linear-gradient(45deg, #ffd700, #ffed4e, #ffd700); 
-					color: #b8860b; 
-					padding: 20px 30px; 
-					border-radius: 15px; 
-					font-size: 1.3em; 
-					font-weight: bold; 
-					text-align: center; 
-					box-shadow: 0 0 30px #ffd700, 0 0 60px #ffd700; 
-					border: 3px solid #ffd700;
-					text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+
+				
+				/* 紙吹雪エフェクト */
+				.confetti-container {
+					position: absolute;
+					top: 0;
+					left: 0;
+					width: 100%;
+					height: 100%;
+					pointer-events: none;
+					overflow: hidden;
 				}
-				@keyframes celebration {
-					0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
-					20% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
-					40% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-					80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-					100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+				.confetti {
+					position: absolute;
+					width: 10px;
+					height: 10px;
+					animation: confetti-fall linear infinite;
+				}
+				.confetti-0 { background: #ff6b6b; }
+				.confetti-1 { background: #4ecdc4; }
+				.confetti-2 { background: #45b7d1; }
+				.confetti-3 { background: #96ceb4; }
+				.confetti-4 { background: #feca57; }
+				@keyframes confetti-fall {
+					0% {
+						transform: translateY(-100vh) rotate(0deg);
+						opacity: 1;
+					}
+					100% {
+						transform: translateY(100vh) rotate(720deg);
+						opacity: 0;
+					}
 				}
 			`}</style>
 		</>
