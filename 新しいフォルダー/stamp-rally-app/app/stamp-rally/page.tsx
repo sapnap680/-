@@ -6,7 +6,7 @@ import Script from "next/script";
 import { db } from "@/src/lib/firebase";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-const totalStamps = 22;
+const totalStamps = 23;
 const venues = [
 	{ name: "大田区総合体育館", lat: 35.5643207, lon: 139.7278943 },
 	{ name: "筑波大学", lat: 36.1025753, lon: 140.1038015 },
@@ -43,16 +43,16 @@ const stampDateRestrictions: { [key: number]: { end: string } } = {
 	11: { end: "2025-09-28" },
 	12: { end: "2025-10-04" },
 	13: { end: "2025-10-05" },
-	14: { end: "2025-10-10" },
-	15: { end: "2025-10-11" },
-	16: { end: "2025-10-12" },
-	17: { end: "2025-10-13" },
-	18: { end: "2025-10-18" },
-	19: { end: "2025-10-19" },
-	20: { end: "2025-10-25" },
-	21: { end: "2025-10-26" },
-	22: { end: "2025-11-01" },
-	23: { end: "2025-11-02" },
+	14: { end: "2025-10-11" },
+	15: { end: "2025-10-12" },
+	16: { end: "2025-10-13" },
+	17: { end: "2025-10-18" },
+	18: { end: "2025-10-19" },
+	19: { end: "2025-10-25" },
+	20: { end: "2025-10-26" },
+	21: { end: "2025-11-01" },
+	22: { end: "2025-11-02" },
+	23: { end: "2025-11-03" },
 };
 
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -122,7 +122,6 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-	// LIFF初期化
 	useEffect(() => {
 		if (!liffReady) return;
 		async function initLiff() {
@@ -270,7 +269,6 @@ export default function StampRallyPage() {
 		}
 	}
 
-	// URLパラメータを処理（プロフィール取得後）
 	useEffect(() => {
 		if (!profile) return;
 		const params = new URLSearchParams(window.location.search);
@@ -323,10 +321,10 @@ export default function StampRallyPage() {
 				return;
 			}
 			
-			if (stampedNumbers.length >= totalStamps) {
-				setOutputMessage("全て獲得済みです！");
-				return;
-			}
+					if (stampedNumbers.length >= 22) {
+			setOutputMessage("全て獲得済みです！");
+			return;
+		}
 			const nowStr = new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 			const nextStampNumber = stampedNumbers.length + 1;
 			const newEntry: StampHistory = { stampNumber: nextStampNumber, venueName: closestVenue.name, date: nowStr, source: `QR / ${prof.displayName || "ゲスト"}` };
@@ -378,7 +376,7 @@ export default function StampRallyPage() {
 			alert("パスワードが違います");
 			return;
 		}
-		if (stampedNumbers.length >= totalStamps) {
+		if (stampedNumbers.length >= 22) {
 			alert("全てのスタンプ獲得済みです");
 			return;
 		}
@@ -526,14 +524,11 @@ export default function StampRallyPage() {
 		return topName ? { name: topName, count: topCount } : null;
 	})();
 
-	// LIFFエラー表示
 	if (liffError) {
 		return (
 			<div style={{ color: "red", fontWeight: "bold", textAlign: "center", marginTop: "40px" }}>{liffError}</div>
 		);
 	}
-
-	// LIFF認証中表示
 	if (liffLoading || !profile) {
 		return (
 			<div style={{ textAlign: "center", marginTop: "40px" }}>
@@ -620,7 +615,7 @@ export default function StampRallyPage() {
 				)}
 				<div className="progress-summary">
 					<p className="stamp-count">
-						現在のスタンプ: <span className="count-large">{stampedNumbers.length}</span> / {totalStamps}
+						現在のスタンプ: <span className="count-large">{stampedNumbers.length}</span> / 22
 					</p>
 					{nextPrizeNumber && (
 						<p className="next-prize-info">
@@ -654,7 +649,7 @@ export default function StampRallyPage() {
 			</div>
 			{/* ここからスタンプグリッド */}
 			<div className="stamp-container"> 
-				{Array.from({ length: totalStamps }, (_, i) => i + 1).map(num => {
+				{Array.from({ length: 22 }, (_, i) => i + 1).map(num => {
 					const isStamped = stampedNumbers.includes(num);
 					const isSpecial = specialStampSet.has(num);
 					return (
@@ -674,7 +669,7 @@ export default function StampRallyPage() {
 						</div>
 					);
 				})}
-				{/* 日程表ボタン - スタンプ23の右側 */}
+				{/* 日程表ボタン - スタンプ22の右側 */}
 				<button 
 					className="schedule-btn-in-grid" 
 					onClick={() => window.open('https://www.kcbbf.jp/index/show-pdf/url/aHR0cHM6Ly9kMmEwdjF4N3F2eGw2Yy5jbG91ZGZyb250Lm5ldC9maWxlcy9zcG9ocF9rY2JiZi9nYW1lX2NhdGVnb3J5LzY4OTMxYzEzMjk5ZmQucGRm', '_blank')}
@@ -689,10 +684,10 @@ export default function StampRallyPage() {
 			<div style={{ maxWidth: 420, margin: "20px auto 0", padding: "0 14px" }}>
 				<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, color: "#866522", fontWeight: 700 }}>
 					<span>進捗</span>
-					<span style={{ marginLeft: "auto" }}>{stampedNumbers.length}/{totalStamps}</span>
+					<span style={{ marginLeft: "auto" }}>{stampedNumbers.length}/22</span>
 				</div>
 				<div style={{ height: 10, background: "#f1f3f5", borderRadius: 6, overflow: "hidden", boxShadow: "inset 0 1px 2px #0001" }}>
-					<div style={{ width: `${Math.min(100, Math.round((stampedNumbers.length/totalStamps)*100))}%`, height: "100%", background: "linear-gradient(90deg,#ffd700,#a97b2c)", transition: "width .3s ease" }} />
+					<div style={{ width: `${Math.min(100, Math.round((stampedNumbers.length/22)*100))}%`, height: "100%", background: "linear-gradient(90deg,#ffd700,#a97b2c)", transition: "width .3s ease" }} />
 				</div>
 			</div>
 			{/* エラー/通知はモーダル風に */}
@@ -827,5 +822,4 @@ export default function StampRallyPage() {
 		</>
 	);
 }
-
 
