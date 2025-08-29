@@ -122,7 +122,18 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-		useEffect(() => {
+		// フォールバックイベントリスナー
+	useEffect(() => {
+		const handleLiffReady = () => {
+			console.log("LIFF ready event received");
+			setLiffReady(true);
+		};
+
+		window.addEventListener('liffReady', handleLiffReady);
+		return () => window.removeEventListener('liffReady', handleLiffReady);
+	}, []);
+
+	useEffect(() => {
 		if (!liffReady) return;
 		
 		// LIFF SDKの読み込みを待機
@@ -553,19 +564,47 @@ export default function StampRallyPage() {
 				<div style={{ fontSize: "14px", color: "#666", marginBottom: "20px" }}>
 					デバッグ情報: LIFF ID = {liffId}
 				</div>
-				<button 
-					onClick={() => window.location.reload()} 
-					style={{ 
-						background: "#00c300", 
-						color: "white", 
-						border: "none", 
-						padding: "10px 20px", 
-						borderRadius: "5px", 
-						cursor: "pointer" 
-					}}
-				>
-					再読み込み
-				</button>
+				<div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+					<button 
+						onClick={() => window.location.reload()} 
+						style={{ 
+							background: "#00c300", 
+							color: "white", 
+							border: "none", 
+							padding: "10px 20px", 
+							borderRadius: "5px", 
+							cursor: "pointer" 
+						}}
+					>
+						再読み込み
+					</button>
+					<button 
+						onClick={() => {
+							// 手動でLIFF SDKを読み込み
+							const script = document.createElement('script');
+							script.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+							script.onload = () => {
+								console.log("LIFF SDK loaded manually");
+								setLiffReady(true);
+							};
+							script.onerror = () => {
+								console.error("Failed to load LIFF SDK manually");
+								setLiffError("LIFF SDKの手動読み込みに失敗しました。");
+							};
+							document.head.appendChild(script);
+						}} 
+						style={{ 
+							background: "#6c757d", 
+							color: "white", 
+							border: "none", 
+							padding: "10px 20px", 
+							borderRadius: "5px", 
+							cursor: "pointer" 
+						}}
+					>
+						手動でSDK読み込み
+					</button>
+				</div>
 			</div>
 		);
 	}
@@ -594,9 +633,9 @@ export default function StampRallyPage() {
 				)}
 				<Script 
 					src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
-					strategy="beforeInteractive"
+					strategy="afterInteractive"
 					onLoad={() => {
-						console.log("LIFF SDK loaded");
+						console.log("LIFF SDK loaded successfully");
 						setLiffReady(true);
 					}}
 					onError={(e) => {
@@ -605,6 +644,23 @@ export default function StampRallyPage() {
 						setLiffLoading(false);
 					}}
 				/>
+				{/* フォールバック: スクリプトが読み込まれない場合の処理 */}
+				{!liffReady && (
+					<script
+						dangerouslySetInnerHTML={{
+							__html: `
+								setTimeout(() => {
+									if (typeof window !== 'undefined' && window.liff) {
+										console.log("LIFF SDK loaded via fallback");
+										window.dispatchEvent(new CustomEvent('liffReady'));
+									} else {
+										console.error("LIFF SDK still not loaded after timeout");
+									}
+								}, 3000);
+							`
+						}}
+					/>
+				)}
 			</div>
 		);
 	}
