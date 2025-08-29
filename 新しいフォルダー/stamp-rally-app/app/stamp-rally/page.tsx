@@ -91,8 +91,8 @@ export default function StampRallyPage() {
 	const [showStaffConfirm, setShowStaffConfirm] = useState(false);
 	const [adminOpen, setAdminOpen] = useState(false);
 
-	const [liffLoading, setLiffLoading] = useState(true);
-	const [liffError, setLiffError] = useState("");
+	const [authLoading, setAuthLoading] = useState(true);
+	const [authError, setAuthError] = useState("");
 	const [profile, setProfile] = useState<any>(null);
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
@@ -121,60 +121,61 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-	// LIFF初期化（シンプル版）
+	// LINE Login 認証チェック
 	useEffect(() => {
-		const initLiff = async () => {
+		const checkAuth = async () => {
 			try {
-				console.log("Starting LIFF initialization...");
+				// URLパラメータから認証コードを取得
+				const urlParams = new URLSearchParams(window.location.search);
+				const code = urlParams.get('code');
+				const state = urlParams.get('state');
 				
-				// LIFF SDKが読み込まれるまで待機
-				let attempts = 0;
-				while (!window.liff && attempts < 50) {
-					await new Promise(resolve => setTimeout(resolve, 100));
-					attempts++;
+				if (code) {
+					// 認証コードがある場合、アクセストークンを取得
+					console.log("Authorization code found, getting access token...");
+					
+					const response = await fetch('/api/auth/line', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({ code, state }),
+					});
+					
+					const data = await response.json();
+					
+					if (data.success && data.accessToken) {
+						// プロフィール情報を取得
+						const profileResponse = await fetch('/api/auth/profile', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({ accessToken: data.accessToken }),
+						});
+						
+						const profileData = await profileResponse.json();
+						
+						if (profileData.success) {
+							setProfile(profileData.profile);
+							setAuthLoading(false);
+							// URLから認証パラメータを削除
+							window.history.replaceState({}, '', window.location.pathname);
+							return;
+						}
+					}
 				}
 				
-				if (!window.liff) {
-					console.error("LIFF SDK not found after waiting");
-					setLiffError("LIFF SDKが読み込まれていません。ページを再読み込みしてください。");
-					setLiffLoading(false);
-					return;
-				}
-
-				console.log("LIFF SDK found, initializing...");
-				
-				// LIFF初期化
-				await window.liff.init({ liffId });
-				console.log("LIFF initialized successfully");
-				
-				// ログイン状態をチェック
-				if (!window.liff.isLoggedIn()) {
-					console.log("Not logged in, redirecting to login...");
-					window.liff.login();
-					return;
-				}
-
-				console.log("Logged in, getting profile...");
-				// プロフィール取得
-				const prof = await window.liff.getProfile();
-				console.log("Profile obtained:", prof);
-				setProfile(prof);
-				setLiffLoading(false);
-			} catch (e: any) {
-				console.error("LIFF initialization error:", e);
-				if (e.message && e.message.includes('not in LIFF browser')) {
-					setLiffError("LINEアプリ内で開いてください。ブラウザでは利用できません。");
-				} else if (e.message && e.message.includes('LIFF ID')) {
-					setLiffError("LIFF設定に問題があります。管理者にお問い合わせください。");
-				} else {
-					setLiffError(`ログインに失敗しました: ${e.message || '不明なエラー'}`);
-				}
-				setLiffLoading(false);
+				// 認証されていない場合、ログイン画面を表示
+				setAuthLoading(false);
+			} catch (error) {
+				console.error("Auth check error:", error);
+				setAuthError("認証チェックに失敗しました。");
+				setAuthLoading(false);
 			}
 		};
 
-		// 初期化開始
-		initLiff();
+		checkAuth();
 	}, []);
 
 	useEffect(() => {
@@ -525,67 +526,36 @@ export default function StampRallyPage() {
 		return topName ? { name: topName, count: topCount } : null;
 	})();
 
-	if (liffError) {
+	if (authError) {
 		return (
 			<div style={{ textAlign: "center", marginTop: "40px", padding: "20px" }}>
 				<Image src="/autumn_logo.png" alt="logo" width={80} height={80} />
 				<div style={{ color: "red", fontWeight: "bold", marginTop: "20px", marginBottom: "20px" }}>
-					{liffError}
+					{authError}
 				</div>
-				<div style={{ fontSize: "14px", color: "#666", marginBottom: "20px" }}>
-					デバッグ情報: LIFF ID = {liffId}
-				</div>
-				<div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
-					<button 
-						onClick={() => window.location.reload()} 
-						style={{ 
-							background: "#00c300", 
-							color: "white", 
-							border: "none", 
-							padding: "10px 20px", 
-							borderRadius: "5px", 
-							cursor: "pointer" 
-						}}
-					>
-						再読み込み
-					</button>
-					<button 
-						onClick={() => {
-							// 手動でLIFF SDKを読み込み
-							const script = document.createElement('script');
-							script.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
-							script.onload = () => {
-								console.log("LIFF SDK loaded manually");
-								setLiffReady(true);
-							};
-							script.onerror = () => {
-								console.error("Failed to load LIFF SDK manually");
-								setLiffError("LIFF SDKの手動読み込みに失敗しました。");
-							};
-							document.head.appendChild(script);
-						}} 
-						style={{ 
-							background: "#6c757d", 
-							color: "white", 
-							border: "none", 
-							padding: "10px 20px", 
-							borderRadius: "5px", 
-							cursor: "pointer" 
-						}}
-					>
-						手動でSDK読み込み
-					</button>
-				</div>
+				<button 
+					onClick={() => window.location.reload()} 
+					style={{ 
+						background: "#00c300", 
+						color: "white", 
+						border: "none", 
+						padding: "10px 20px", 
+						borderRadius: "5px", 
+						cursor: "pointer" 
+					}}
+				>
+					再読み込み
+				</button>
 			</div>
 		);
 	}
-	if (liffLoading || !profile) {
+	if (authLoading || !profile) {
 		return (
 			<div style={{ textAlign: "center", marginTop: "40px" }}>
 				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
-				<h2>LINE認証中...</h2>
-				<div style={{ fontSize: "12px", color: "#666", marginTop: "10px" }}>
-					デバッグ: liffLoading={liffLoading ? "true" : "false"}
+				<h2>LINEでログイン</h2>
+				<div style={{ fontSize: "14px", color: "#666", marginTop: "20px", marginBottom: "30px" }}>
+					スタンプラリーを利用するにはLINEでログインしてください
 				</div>
 				{pendingStampParam && (
 					<div style={{ 
@@ -599,13 +569,27 @@ export default function StampRallyPage() {
 						border: "1px solid #bbdefb"
 					}}>
 						📱 QRコードを検出しました<br />
-						認証完了後に自動処理します
+						ログイン後に自動処理します
 					</div>
 				)}
-				<Script 
-					src="https://static.line-scdn.net/liff/edge/2/sdk.js" 
-					strategy="beforeInteractive"
-				/>
+				<button 
+					onClick={() => {
+						const lineLoginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID}&redirect_uri=${encodeURIComponent(process.env.NEXT_PUBLIC_LINE_LOGIN_REDIRECT_URI!)}&state=random_state&scope=profile%20openid`;
+						window.location.href = lineLoginUrl;
+					}}
+					style={{ 
+						background: "#00c300", 
+						color: "white", 
+						border: "none", 
+						padding: "15px 30px", 
+						borderRadius: "8px", 
+						cursor: "pointer",
+						fontSize: "16px",
+						fontWeight: "bold"
+					}}
+				>
+					LINEでログイン
+				</button>
 			</div>
 		);
 	}
