@@ -710,7 +710,7 @@ export default function StampRallyPage() {
 				</div>
 			)}
 			
-			{/* 特別スタンプ演出 - 紙吹雪のみ */}
+			{/* 紙吹雪演出 - 特別スタンプ到達時 */}
 			{specialStampEffect && (
 				<div className="confetti-container" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 200, pointerEvents: "none" }}>
 					{Array.from({ length: 50 }, (_, i) => (
@@ -725,7 +725,9 @@ export default function StampRallyPage() {
 			{showStaffConfirm && (
 				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)}>
 					<div className="confirm-label">
-						<span>おめでとうございます！</span>
+						<span>🎉 おめでとうございます！</span><br />
+						<span>{staffPrize} を獲得しました。</span><br />
+						<span style={{ color: '#c30000' }}>会場スタッフにこの画面をお見せください。</span>
 					</div>
 					<button onClick={() => {
 						setShowStaffConfirm(false);
@@ -840,7 +842,27 @@ export default function StampRallyPage() {
 				.toast-body { font-weight: 600; }
 				.toast-action { font-size: 12px; color: #666; margin-top: 6px; }
 				
-
+				/* 特別スタンプ演出 */
+				.special-stamp-celebration { animation: celebration 3s ease-out forwards; }
+				.celebration-text { 
+					background: linear-gradient(45deg, #ffd700, #ffed4e, #ffd700); 
+					color: #b8860b; 
+					padding: 20px 30px; 
+					border-radius: 15px; 
+					font-size: 1.3em; 
+					font-weight: bold; 
+					text-align: center; 
+					box-shadow: 0 0 30px #ffd700, 0 0 60px #ffd700; 
+					border: 3px solid #ffd700;
+					text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+				}
+				@keyframes celebration {
+					0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+					20% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+					40% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+					80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+					100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+				}
 				
 				/* 紙吹雪エフェクト */
 				.confetti-container {
@@ -862,7 +884,7 @@ export default function StampRallyPage() {
 				.confetti-1 { background: #4ecdc4; }
 				.confetti-2 { background: #45b7d1; }
 				.confetti-3 { background: #96ceb4; }
-				.confetti-4 { background: #feca57; }
+				.confetti-4 { background: #feca57; }ちｇちｇ
 				@keyframes confetti-fall {
 					0% {
 						transform: translateY(-100vh) rotate(0deg);
