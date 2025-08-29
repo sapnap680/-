@@ -91,9 +91,7 @@ export default function StampRallyPage() {
 	const [showStaffConfirm, setShowStaffConfirm] = useState(false);
 	const [adminOpen, setAdminOpen] = useState(false);
 
-	const [authLoading, setAuthLoading] = useState(true);
-	const [authError, setAuthError] = useState("");
-	const [profile, setProfile] = useState<any>(null);
+	const [profile, setProfile] = useState<any>({ userId: 'guest_' + Date.now(), displayName: 'ゲストユーザー' });
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
 
@@ -121,62 +119,7 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-	// LINE Login 認証チェック
-	useEffect(() => {
-		const checkAuth = async () => {
-			try {
-				// URLパラメータから認証コードを取得
-				const urlParams = new URLSearchParams(window.location.search);
-				const code = urlParams.get('code');
-				const state = urlParams.get('state');
-				
-				if (code) {
-					// 認証コードがある場合、アクセストークンを取得
-					console.log("Authorization code found, getting access token...");
-					
-					const response = await fetch('/api/auth/line', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({ code, state }),
-					});
-					
-					const data = await response.json();
-					
-					if (data.success && data.accessToken) {
-						// プロフィール情報を取得
-						const profileResponse = await fetch('/api/auth/profile', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-							},
-							body: JSON.stringify({ accessToken: data.accessToken }),
-						});
-						
-						const profileData = await profileResponse.json();
-						
-						if (profileData.success) {
-							setProfile(profileData.profile);
-							setAuthLoading(false);
-							// URLから認証パラメータを削除
-							window.history.replaceState({}, '', window.location.pathname);
-							return;
-						}
-					}
-				}
-				
-				// 認証されていない場合、ログイン画面を表示
-				setAuthLoading(false);
-			} catch (error) {
-				console.error("Auth check error:", error);
-				setAuthError("認証チェックに失敗しました。");
-				setAuthLoading(false);
-			}
-		};
-
-		checkAuth();
-	}, []);
+	// ゲストモードで開始（認証なし）
 
 	useEffect(() => {
 		const stamped = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
@@ -526,73 +469,7 @@ export default function StampRallyPage() {
 		return topName ? { name: topName, count: topCount } : null;
 	})();
 
-	if (authError) {
-		return (
-			<div style={{ textAlign: "center", marginTop: "40px", padding: "20px" }}>
-				<Image src="/autumn_logo.png" alt="logo" width={80} height={80} />
-				<div style={{ color: "red", fontWeight: "bold", marginTop: "20px", marginBottom: "20px" }}>
-					{authError}
-				</div>
-				<button 
-					onClick={() => window.location.reload()} 
-					style={{ 
-						background: "#00c300", 
-						color: "white", 
-						border: "none", 
-						padding: "10px 20px", 
-						borderRadius: "5px", 
-						cursor: "pointer" 
-					}}
-				>
-					再読み込み
-				</button>
-			</div>
-		);
-	}
-	if (authLoading || !profile) {
-		return (
-			<div style={{ textAlign: "center", marginTop: "40px" }}>
-				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
-				<h2>LINEでログイン</h2>
-				<div style={{ fontSize: "14px", color: "#666", marginTop: "20px", marginBottom: "30px" }}>
-					スタンプラリーを利用するにはLINEでログインしてください
-				</div>
-				{pendingStampParam && (
-					<div style={{ 
-						background: "#e3f2fd", 
-						color: "#1976d2", 
-						padding: "10px", 
-						margin: "10px auto", 
-						borderRadius: "5px", 
-						fontSize: "14px",
-						maxWidth: "300px",
-						border: "1px solid #bbdefb"
-					}}>
-						📱 QRコードを検出しました<br />
-						ログイン後に自動処理します
-					</div>
-				)}
-				<button 
-					onClick={() => {
-						const lineLoginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID}&redirect_uri=${encodeURIComponent(process.env.NEXT_PUBLIC_LINE_LOGIN_REDIRECT_URI!)}&state=random_state&scope=profile%20openid`;
-						window.location.href = lineLoginUrl;
-					}}
-					style={{ 
-						background: "#00c300", 
-						color: "white", 
-						border: "none", 
-						padding: "15px 30px", 
-						borderRadius: "8px", 
-						cursor: "pointer",
-						fontSize: "16px",
-						fontWeight: "bold"
-					}}
-				>
-					LINEでログイン
-				</button>
-			</div>
-		);
-	}
+	// ゲストモードで直接アプリを表示
 
 	return (
 		<>
@@ -600,6 +477,18 @@ export default function StampRallyPage() {
 				<Image src="/autumn_logo.png" className="logo" alt="AUTUMN LEAGUE LOGO" width={110} height={110} />
 				<div className="main-title">AUTUMN LEAGUE</div>
 				<div className="subtitle">スタンプラリー</div>
+				<div style={{ 
+					background: "#fff3cd", 
+					color: "#856404", 
+					padding: "8px 16px", 
+					margin: "10px auto", 
+					borderRadius: "5px", 
+					fontSize: "14px",
+					maxWidth: "300px",
+					border: "1px solid #ffeaa7"
+				}}>
+					⚠️ ゲストモードで利用中（データはローカルのみ保存）
+				</div>
 			</header>
 			{/* line-status block removed per request */}
 
