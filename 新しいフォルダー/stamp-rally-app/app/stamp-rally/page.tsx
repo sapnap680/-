@@ -140,8 +140,15 @@ export default function StampRallyPage() {
 				
 				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
+					try {
 					window.liff.login();
 					return;
+					} catch (loginError: any) {
+						console.error("Login error:", loginError);
+						setLiffError("LINEログインに失敗しました。LINEアプリ内で開き直してください。");
+						setLiffLoading(false);
+						return;
+					}
 				}
 
 				// プロフィール取得
@@ -150,12 +157,17 @@ export default function StampRallyPage() {
 				setLiffLoading(false);
 			} catch (e: any) {
 				// より具体的なエラーメッセージ
+				console.error("LIFF initialization error:", e);
 				if (e.message && e.message.includes('not in LIFF browser')) {
-					setLiffError("LINEアプリ内で開いてください。");
+					setLiffError("LINEアプリ内で開いてください。ブラウザでは利用できません。");
 				} else if (e.message && e.message.includes('LIFF ID')) {
 					setLiffError("LIFF設定に問題があります。管理者にお問い合わせください。");
+				} else if (e.message && e.message.includes('network')) {
+					setLiffError("ネットワークエラーです。インターネット接続を確認してください。");
+				} else if (e.message && e.message.includes('timeout')) {
+					setLiffError("タイムアウトしました。ページを再読み込みしてください。");
 				} else {
-					setLiffError("ログインに失敗しました。ページを再読み込みしてください。");
+					setLiffError(`ログインに失敗しました: ${e.message || '不明なエラー'}`);
 				}
 				setLiffLoading(false);
 			}
@@ -247,16 +259,26 @@ export default function StampRallyPage() {
 		}
 	}
 
+	// URLパラメータを保存（ログイン前でも保持）
+	const [pendingStampParam, setPendingStampParam] = useState<string | null>(null);
+
 	useEffect(() => {
-		if (!profile) return;
 		const params = new URLSearchParams(window.location.search);
 		const stampParam = params.get("stamp");
 		if (stampParam) {
-			handleQRCode(stampParam, profile);
+			setPendingStampParam(stampParam);
+			// URLからパラメータを削除（再読み込み時の重複処理を防ぐ）
 			params.delete("stamp");
 			window.history.replaceState({}, "", window.location.pathname + (params.toString() ? "?" + params.toString() : ""));
 		}
-	}, [profile]);
+	}, []);
+
+	// プロフィール取得後にパラメータを処理
+	useEffect(() => {
+		if (!profile || !pendingStampParam) return;
+		handleQRCode(pendingStampParam, profile);
+		setPendingStampParam(null); // 処理完了後はクリア
+	}, [profile, pendingStampParam]);
 
 	async function handleQRCode(qrValue: string, prof: any) {
 		const qrStampNumber = stampQRCodes[qrValue];
@@ -504,7 +526,28 @@ export default function StampRallyPage() {
 
 	if (liffError) {
 		return (
-			<div style={{ color: "red", fontWeight: "bold", textAlign: "center", marginTop: "40px" }}>{liffError}</div>
+			<div style={{ textAlign: "center", marginTop: "40px", padding: "20px" }}>
+				<Image src="/autumn_logo.png" alt="logo" width={80} height={80} />
+				<div style={{ color: "red", fontWeight: "bold", marginTop: "20px", marginBottom: "20px" }}>
+					{liffError}
+				</div>
+				<div style={{ fontSize: "14px", color: "#666", marginBottom: "20px" }}>
+					デバッグ情報: LIFF ID = {liffId}
+				</div>
+				<button 
+					onClick={() => window.location.reload()} 
+					style={{ 
+						background: "#00c300", 
+						color: "white", 
+						border: "none", 
+						padding: "10px 20px", 
+						borderRadius: "5px", 
+						cursor: "pointer" 
+					}}
+				>
+					再読み込み
+				</button>
+			</div>
 		);
 	}
 	if (liffLoading || !profile) {
@@ -512,6 +555,21 @@ export default function StampRallyPage() {
 			<div style={{ textAlign: "center", marginTop: "40px" }}>
 				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
 				<h2>LINE認証中...</h2>
+				{pendingStampParam && (
+					<div style={{ 
+						background: "#e3f2fd", 
+						color: "#1976d2", 
+						padding: "10px", 
+						margin: "10px auto", 
+						borderRadius: "5px", 
+						fontSize: "14px",
+						maxWidth: "300px",
+						border: "1px solid #bbdefb"
+					}}>
+						📱 QRコードを検出しました<br />
+						認証完了後に自動処理します
+					</div>
+				)}
 				<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
 			</div>
 		);
@@ -519,7 +577,6 @@ export default function StampRallyPage() {
 
 	return (
 		<>
-			<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
 			<header>
 				<Image src="/autumn_logo.png" className="logo" alt="AUTUMN LEAGUE LOGO" width={110} height={110} />
 				<div className="main-title">AUTUMN LEAGUE</div>
