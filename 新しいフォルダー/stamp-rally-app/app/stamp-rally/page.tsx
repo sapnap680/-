@@ -128,31 +128,32 @@ export default function StampRallyPage() {
 		// LIFF SDKの読み込みを待機
 		const initLiff = async () => {
 			try {
+				console.log("Starting LIFF initialization...");
+				
 				// LIFF SDKが正しく読み込まれているかチェック
 				if (!window.liff) {
+					console.error("LIFF SDK not found");
 					setLiffError("LIFF SDKが読み込まれていません。ページを再読み込みしてください。");
 					setLiffLoading(false);
 					return;
 				}
 
+				console.log("LIFF SDK found, initializing...");
+				
 				// LIFF初期化（より詳細な設定）
 				await window.liff.init({ 
 					liffId,
 					withLoginOnExternalBrowser: true
 				});
 				
-				// クライアント機能をチェック
-				if (!window.liff.isInClient()) {
-					// 外部ブラウザの場合
-					if (!window.liff.isLoggedIn()) {
-						window.liff.login();
-						return;
-					}
-				}
+				console.log("LIFF initialized successfully");
+				console.log("isInClient:", window.liff.isInClient());
+				console.log("isLoggedIn:", window.liff.isLoggedIn());
 				
 				// ログイン状態をチェック
 				if (!window.liff.isLoggedIn()) {
 					try {
+						console.log("Not logged in, attempting login...");
 						window.liff.login();
 						return;
 					} catch (loginError: any) {
@@ -163,8 +164,10 @@ export default function StampRallyPage() {
 					}
 				}
 
+				console.log("Logged in, getting profile...");
 				// プロフィール取得
 				const prof = await window.liff.getProfile();
+				console.log("Profile obtained:", prof);
 				setProfile(prof);
 				setLiffLoading(false);
 			} catch (e: any) {
@@ -571,6 +574,9 @@ export default function StampRallyPage() {
 			<div style={{ textAlign: "center", marginTop: "40px" }}>
 				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
 				<h2>LINE認証中...</h2>
+				<div style={{ fontSize: "12px", color: "#666", marginTop: "10px" }}>
+					デバッグ: liffReady={liffReady ? "true" : "false"}, liffLoading={liffLoading ? "true" : "false"}
+				</div>
 				{pendingStampParam && (
 					<div style={{ 
 						background: "#e3f2fd", 
