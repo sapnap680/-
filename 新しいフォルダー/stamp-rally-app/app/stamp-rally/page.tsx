@@ -6,7 +6,7 @@ import Script from "next/script";
 import { db } from "@/src/lib/firebase";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 
-const totalStamps = 23;
+const totalStamps = 22;
 const venues = [
 	{ name: "大田区総合体育館", lat: 35.5643207, lon: 139.7278943 },
 	{ name: "筑波大学", lat: 36.1025753, lon: 140.1038015 },
@@ -91,7 +91,10 @@ export default function StampRallyPage() {
 	const [showStaffConfirm, setShowStaffConfirm] = useState(false);
 	const [adminOpen, setAdminOpen] = useState(false);
 
-	const [profile, setProfile] = useState<any>({ userId: 'guest_' + Date.now(), displayName: 'ゲストユーザー' });
+	const [liffLoading, setLiffLoading] = useState(true);
+	const [liffError, setLiffError] = useState("");
+	const [profile, setProfile] = useState<any>(null);
+	const [liffReady, setLiffReady] = useState(false);
 	// Firestore同期
 	const [syncing, setSyncing] = useState(false);
 
@@ -119,7 +122,70 @@ export default function StampRallyPage() {
 	// 特別スタンプの判定を最適化
 	const specialStampSet = useMemo(() => new Set(specialStampNumbers), []);
 
-	// ゲストモードで開始（認証なし）
+	// LIFF初期化
+	useEffect(() => {
+		if (!liffReady) return;
+		async function initLiff() {
+			if (!window.liff) {
+				setLiffError("LIFF SDKが読み込まれていません。LINEアプリで開いてください。");
+				setLiffLoading(false);
+				return;
+			}
+			try {
+				await window.liff.init({ liffId });
+				if (!window.liff.isLoggedIn()) {
+					// 常にLIFFに登録したエンドポイント配下に戻す
+					const params = new URLSearchParams(window.location.search);
+					const stamp = params.get("stamp");
+					const basePath = "/stamp-rally";
+					const redirectUri = window.location.origin + basePath + (stamp ? `?stamp=${encodeURIComponent(stamp)}` : "");
+					// ログイン再帰ループ抑止（短時間での多重遷移を抑える）
+					try {
+						const last = sessionStorage.getItem("liffLoginTriedAt");
+						if (last && Date.now() - parseInt(last) < 15000) {
+							setLiffError("LINEログインに戻りました。LINEアプリ内で開いているか、LIFFのURL設定をご確認ください。");
+							setLiffLoading(false);
+							return;
+						}
+						sessionStorage.setItem("liffLoginTriedAt", String(Date.now()));
+					} catch {}
+					window.liff.login({ redirectUri });
+					return;
+				}
+				const prof = await window.liff.getProfile();
+				setProfile(prof);
+				setLiffLoading(false);
+			} catch (e: any) {
+				setLiffError("LINEログイン必須です。再読込してください。");
+				setLiffLoading(false);
+				console.error(e);
+			}
+		}
+		initLiff();
+	}, [liffReady]);
+
+	// 初期化が長引く場合のフォールバック表示
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			if (liffLoading && !profile && !liffError) {
+				setLiffError("LIFFの初期化が長引いています。LINEアプリ内で開いているか、LIFFのEndpoint URLと実際のURLが一致しているか確認してください。");
+			}
+		}, 15000);
+		return () => clearTimeout(timer);
+	}, [liffLoading, profile, liffError]);
+
+	function retryLogin() {
+		try {
+			if (typeof window === "undefined" || !window.liff) return;
+			const params = new URLSearchParams(window.location.search);
+			const stamp = params.get("stamp");
+			const basePath = "/stamp-rally";
+			const redirectUri = window.location.origin + basePath + (stamp ? `?stamp=${encodeURIComponent(stamp)}` : "");
+			window.liff.login({ redirectUri });
+		} catch (e) {
+			console.error(e);
+		}
+	}
 
 	useEffect(() => {
 		const stamped = JSON.parse(localStorage.getItem("stamps_v1") || "[]");
@@ -204,26 +270,17 @@ export default function StampRallyPage() {
 		}
 	}
 
-	// URLパラメータを保存（ログイン前でも保持）
-	const [pendingStampParam, setPendingStampParam] = useState<string | null>(null);
-
+	// URLパラメータを処理（プロフィール取得後）
 	useEffect(() => {
+		if (!profile) return;
 		const params = new URLSearchParams(window.location.search);
 		const stampParam = params.get("stamp");
 		if (stampParam) {
-			setPendingStampParam(stampParam);
-			// URLからパラメータを削除（再読み込み時の重複処理を防ぐ）
+			handleQRCode(stampParam, profile);
 			params.delete("stamp");
 			window.history.replaceState({}, "", window.location.pathname + (params.toString() ? "?" + params.toString() : ""));
 		}
-	}, []);
-
-	// プロフィール取得後にパラメータを処理
-	useEffect(() => {
-		if (!profile || !pendingStampParam) return;
-		handleQRCode(pendingStampParam, profile);
-		setPendingStampParam(null); // 処理完了後はクリア
-	}, [profile, pendingStampParam]);
+	}, [profile]);
 
 	async function handleQRCode(qrValue: string, prof: any) {
 		const qrStampNumber = stampQRCodes[qrValue];
@@ -469,26 +526,37 @@ export default function StampRallyPage() {
 		return topName ? { name: topName, count: topCount } : null;
 	})();
 
-	// ゲストモードで直接アプリを表示
+	// LIFFエラー表示
+	if (liffError) {
+		return (
+			<div style={{ color: "red", fontWeight: "bold", textAlign: "center", marginTop: "40px" }}>{liffError}</div>
+		);
+	}
+
+	// LIFF認証中表示
+	if (liffLoading || !profile) {
+		return (
+			<div style={{ textAlign: "center", marginTop: "40px" }}>
+				<Image src="/autumn_logo.png" alt="logo" width={100} height={100} />
+				<h2>LINE認証中...</h2>
+				<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
+				<div style={{ marginTop: 12 }}>
+					<button onClick={retryLogin} style={{ padding: "8px 14px", borderRadius: 6, background: "#00c300", color: "#fff", fontWeight: 700 }}>ログインを再試行</button>
+				</div>
+				<div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
+					URL: {typeof window !== "undefined" ? window.location.href : ""}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<>
+			<Script src="https://static.line-scdn.net/liff/edge/2/sdk.js" strategy="afterInteractive" onLoad={() => setLiffReady(true)} />
 			<header>
 				<Image src="/autumn_logo.png" className="logo" alt="AUTUMN LEAGUE LOGO" width={110} height={110} />
 				<div className="main-title">AUTUMN LEAGUE</div>
 				<div className="subtitle">スタンプラリー</div>
-				<div style={{ 
-					background: "#fff3cd", 
-					color: "#856404", 
-					padding: "8px 16px", 
-					margin: "10px auto", 
-					borderRadius: "5px", 
-					fontSize: "14px",
-					maxWidth: "300px",
-					border: "1px solid #ffeaa7"
-				}}>
-					⚠️ ゲストモードで利用中（データはローカルのみ保存）
-				</div>
 			</header>
 			{/* line-status block removed per request */}
 
