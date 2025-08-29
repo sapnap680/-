@@ -27,6 +27,7 @@ const venues = [
 const maxDistance = 1000;
 
 const specialStampNumbers = [3, 7, 12, 22];
+const giftNumbers = [1, 2, 3, 4]; // ギフト1個目、2個目、3個目、4個目
 const adminPassword = "3557";
 
 const stampDateRestrictions: { [key: number]: { end: string } } = {
@@ -711,10 +712,10 @@ export default function StampRallyPage() {
 			{specialStampEffect && (
 				<div className="special-stamp-celebration" style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 200, pointerEvents: "none" }}>
 					<div className="celebration-text">
-						🎉 特別スタンプ獲得！ 🎉
+						🎉 おめでとうございます！ 🎉
 						<br />
 						<span style={{ fontSize: "1.2em", fontWeight: "bold" }}>
-							{specialStampEffect === 22 ? "❓" : "🎁"} ギフト（{specialStampEffect}個目）
+							🎁 ギフト{giftNumbers[specialStampNumbers.indexOf(specialStampEffect)]}個目を獲得！
 						</span>
 					</div>
 				</div>
