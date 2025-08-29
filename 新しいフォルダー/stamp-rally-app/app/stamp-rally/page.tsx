@@ -67,6 +67,27 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 	return R * c;
 };
 
+// 紙吹雪演出関数
+const showConfetti = () => {
+	const confettiDiv = document.createElement('div');
+	confettiDiv.className = 'confetti';
+	for (let i = 0; i < 30; i++) {
+		let piece = document.createElement('div');
+		piece.className = 'confetti-piece';
+		piece.style.left = Math.random() * 100 + "vw";
+		piece.style.animationDelay = (Math.random() * 0.8) + "s";
+		piece.style.background = [
+			'linear-gradient(135deg,#ffd700 70%,#fff 100%)',
+			'linear-gradient(135deg,#ff0055 60%,#fff 100%)',
+			'linear-gradient(135deg,#00c300 70%,#fff 90%)',
+			'linear-gradient(135deg,#a97b2c 85%,#fff 100%)'
+		][Math.floor(Math.random()*4)];
+		confettiDiv.appendChild(piece);
+	}
+	document.body.appendChild(confettiDiv);
+	setTimeout(() => { confettiDiv.remove(); }, 4000);
+};
+
 declare global {
 	interface Window {
 		liff: any;
@@ -338,8 +359,7 @@ export default function StampRallyPage() {
 			
 			// 特別スタンプの演出
 			if (specialStampNumbers.includes(nextStampNumber)) {
-				setSpecialStampEffect(nextStampNumber);
-				setTimeout(() => setSpecialStampEffect(null), 3000);
+				showConfetti();
 			}
 
 			// Firestoreへ追記
@@ -710,18 +730,7 @@ export default function StampRallyPage() {
 				</div>
 			)}
 			
-			{/* 紙吹雪演出 - 特別スタンプ到達時 */}
-			{specialStampEffect && (
-				<div className="confetti-container" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 200, pointerEvents: "none" }}>
-					{Array.from({ length: 50 }, (_, i) => (
-						<div key={i} className={`confetti confetti-${i % 5}`} style={{
-							left: `${Math.random() * 100}%`,
-							animationDelay: `${Math.random() * 2}s`,
-							animationDuration: `${2 + Math.random() * 3}s`
-						}}></div>
-					))}
-				</div>
-			)}
+
 			{showStaffConfirm && (
 				<div className="staff-confirm-container" onClick={()=>setShowStaffConfirm(false)}>
 					<div className="confirm-label">
@@ -865,33 +874,28 @@ export default function StampRallyPage() {
 				}
 				
 				/* 紙吹雪エフェクト */
-				.confetti-container {
-					position: absolute;
+				.confetti {
+					position: fixed;
 					top: 0;
 					left: 0;
 					width: 100%;
 					height: 100%;
 					pointer-events: none;
-					overflow: hidden;
+					z-index: 1000;
 				}
-				.confetti {
+				.confetti-piece {
 					position: absolute;
-					width: 10px;
-					height: 10px;
-					animation: confetti-fall linear infinite;
+					width: 8px;
+					height: 8px;
+					animation: confetti-fall 2s linear forwards;
 				}
-				.confetti-0 { background: #ff6b6b; }
-				.confetti-1 { background: #4ecdc4; }
-				.confetti-2 { background: #45b7d1; }
-				.confetti-3 { background: #96ceb4; }
-				.confetti-4 { background: #feca57; }ちｇちｇ
 				@keyframes confetti-fall {
 					0% {
 						transform: translateY(-100vh) rotate(0deg);
 						opacity: 1;
 					}
 					100% {
-						transform: translateY(100vh) rotate(720deg);
+						transform: translateY(100vh) rotate(360deg);
 						opacity: 0;
 					}
 				}
